@@ -11,12 +11,12 @@ An Elixir agent built on **Jido v2.2** + **jido_ai v2.1** that runs on an HPC lo
 Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/deferred
 
 ### Phase 0 — Project skeleton
-- [ ] `mix new jido_hpc --sup` scaffold committed
-- [ ] `mix.exs` deps: `:jido ~> 2.2`, `:jido_ai ~> 2.1`, `:req_llm`, `:jason`
-- [ ] App supervision tree includes the Jido instance (`MyApp.Jido`)
-- [ ] `config/config.exs` and `config/runtime.exs` stubs
-- [ ] Smoke test: `Jido.AI.ask("hello")` returns a response end-to-end
-- [ ] CI: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix test`
+- [x] `mix new jido_hpc --sup` scaffold committed
+- [x] `mix.exs` deps: `:jido ~> 2.2`, `:jido_ai ~> 2.1`, `:jason` (req_llm pulled in transitively by jido_ai)
+- [x] App supervision tree includes the Jido instance (`JidoHpc.Jido`)
+- [x] `config/{config,dev,test,prod,runtime}.exs` stubs
+- [x] Smoke test scaffold: `test/integration/llm_smoke_test.exs` tagged `:smoke`, skipped by default; runs with `ANTHROPIC_API_KEY=… mix test --include smoke`
+- [~] CI: `mix format --check-formatted` ✓ verified locally. `mix compile --warnings-as-errors` and `mix test` deferred — require `mix deps.get`, which needs network + Elixir 1.17+ (sandbox has 1.14, no outbound to repo.hex.pm). User must run on a host with network + Elixir 1.17+.
 
 ### Phase 1 — Login-node primitives
 - [ ] `JidoHpc.Safety.PathGuard` (allowlist roots, reject `..` escapes)
