@@ -43,8 +43,14 @@ defmodule JidoHpc.Actions.Git.Log do
 
   defp build_args(limit, rev, paths) do
     cond do
+      is_binary(rev) and String.starts_with?(rev, "-") ->
+        {:error, {:invalid_rev, :flag_like}}
+
       Enum.any?(paths, &(not is_binary(&1))) ->
         {:error, {:invalid_paths, :non_string}}
+
+      Enum.any?(paths, &String.starts_with?(&1, "-")) ->
+        {:error, {:invalid_paths, :flag_like}}
 
       true ->
         base = [
@@ -56,7 +62,9 @@ defmodule JidoHpc.Actions.Git.Log do
 
         base = if rev, do: base ++ [rev], else: base
 
-        {:ok, if(paths == [], do: base, else: base ++ ["--" | paths])}
+        # Always emit `--` so paths (and any future positional args)
+        # cannot be parsed as flags.
+        {:ok, base ++ ["--" | paths]}
     end
   end
 

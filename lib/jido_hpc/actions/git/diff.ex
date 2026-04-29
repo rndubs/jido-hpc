@@ -42,19 +42,24 @@ defmodule JidoHpc.Actions.Git.Diff do
   end
 
   defp build_args(rev, staged?, paths) do
-    base =
-      ["diff"]
-      |> maybe_add_flag("--cached", staged?)
-      |> maybe_add(rev)
-
     cond do
+      is_binary(rev) and String.starts_with?(rev, "-") ->
+        {:error, {:invalid_rev, :flag_like}}
+
       Enum.any?(paths, &(not is_binary(&1))) ->
         {:error, {:invalid_paths, :non_string}}
 
-      paths == [] ->
-        {:ok, base}
+      Enum.any?(paths, &String.starts_with?(&1, "-")) ->
+        {:error, {:invalid_paths, :flag_like}}
 
       true ->
+        base =
+          ["diff"]
+          |> maybe_add_flag("--cached", staged?)
+          |> maybe_add(rev)
+
+        # Always insert `--` so neither rev nor paths can ever be
+        # interpreted as flags by future git versions.
         {:ok, base ++ ["--" | paths]}
     end
   end

@@ -43,10 +43,31 @@ defmodule JidoHpc.Actions.Slurm.TemplateScript do
 
   @impl true
   def run(params, _ctx) do
+    # Absolute output/error paths (`/var/log/foo.out`) bypass --chdir,
+    # so they have to clear the path allowlist independently. Relative
+    # paths are resolved by Slurm against the validated workdir, so
+    # they're already covered.
     with {:ok, abs_workdir} <- PathGuard.validate(params.workdir),
+         :ok <- validate_optional_abs(params[:output]),
+         :ok <- validate_optional_abs(params[:error]),
          {:ok, spec} <- JobSpec.new(spec_attrs(params, abs_workdir)),
          {:ok, script} <- Script.render(spec) do
       {:ok, %{spec: spec, script: script, workdir: abs_workdir}}
+    end
+  end
+
+  defp validate_optional_abs(nil), do: :ok
+
+  defp validate_optional_abs(path) when is_binary(path) do
+    case Path.type(path) do
+      :absolute ->
+        case PathGuard.validate(path) do
+          {:ok, _} -> :ok
+          {:error, _} = err -> err
+        end
+
+      _ ->
+        :ok
     end
   end
 

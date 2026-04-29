@@ -74,8 +74,20 @@ defmodule JidoHpc.Slurm.JobSpec do
             qos: nil
 
   @time_re ~r/^(?:\d+-)?\d{1,2}:\d{2}:\d{2}$|^\d+$/
-  @name_re ~r/^[A-Za-z0-9._\-]+$/
+  # First character must be alphanumeric or underscore — prevents
+  # `--`-prefixed flag injection into directive lines like
+  # `#SBATCH --job-name=--uid=0`.
+  @name_re ~r/^[A-Za-z0-9_][A-Za-z0-9._\-]*$/
   @env_key_re ~r/^[A-Za-z_][A-Za-z0-9_]*$/
+
+  # Conservative allowlist for free-form Slurm identifier fields.
+  # Allows letters, digits, and the punctuation Slurm itself uses for
+  # array specs (`-`, `:`, `,`, `%`), dependency lists (`:`, `,`,
+  # `?`), partition/qos/account names (`.`, `_`), and a `+` for sacct
+  # variant suffixes. Crucially: NO whitespace, `;`, `&`, `|`, `$`,
+  # quotes, or `#` — those are how a hostile value would forge a new
+  # `#SBATCH` directive line or comment out the rest of the script.
+  @ident_re ~r/^[A-Za-z0-9_][A-Za-z0-9._:,%+\-?]*$/
 
   @doc """
   Construct a JobSpec from a map or keyword list, applying defaults and
@@ -98,14 +110,19 @@ defmodule JidoHpc.Slurm.JobSpec do
          :ok <- validate_mem(mem),
          {:ok, gpus} <- fetch_non_neg_int(attrs, :gpus, nil),
          {:ok, partition} <- fetch_optional_string(attrs, :partition),
+         :ok <- validate_ident(:partition, partition),
          {:ok, modules} <- fetch_string_list(attrs, :modules, []),
          {:ok, env} <- fetch_env(attrs),
          {:ok, array} <- fetch_optional_string(attrs, :array),
+         :ok <- validate_ident(:array, array),
          {:ok, dependency} <- fetch_optional_string(attrs, :dependency),
+         :ok <- validate_ident(:dependency, dependency),
          {:ok, output} <- fetch_string_or_default(attrs, :output, "logs/%x-%j.out"),
          {:ok, error} <- fetch_string_or_default(attrs, :error, "logs/%x-%j.err"),
          {:ok, account} <- fetch_optional_string(attrs, :account),
-         {:ok, qos} <- fetch_optional_string(attrs, :qos) do
+         :ok <- validate_ident(:account, account),
+         {:ok, qos} <- fetch_optional_string(attrs, :qos),
+         :ok <- validate_ident(:qos, qos) do
       {:ok,
        %__MODULE__{
          name: name,
@@ -254,6 +271,14 @@ defmodule JidoHpc.Slurm.JobSpec do
     if Regex.match?(~r/^\d+[KMGT]?$/, mem),
       do: :ok,
       else: {:error, {:invalid, :mem, :unrecognized_format}}
+  end
+
+  defp validate_ident(_key, nil), do: :ok
+
+  defp validate_ident(key, value) when is_binary(value) do
+    if Regex.match?(@ident_re, value),
+      do: :ok,
+      else: {:error, {:invalid, key, :unsafe_characters}}
   end
 
   defp get(map, key) when is_atom(key) do

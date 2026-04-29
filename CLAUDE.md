@@ -33,6 +33,7 @@ If a user request is ambiguous, check `plan.md` first — the answer is often al
 - Style: `mix format` enforced; `mix compile --warnings-as-errors` must pass; `mix test` must pass.
 - Tests: ExUnit. Slurm tests use a stubbed `JidoHpc.Slurm.CLI` with fixture JSON — no real cluster in CI.
 - File editing: read-before-edit, exact-match replacement (Claude Code default).
+- Offline lint (when `mix deps.get` is blocked): `elixir bin/lint/lint.exs`. This parallel-compiles every project file against hand-written stubs of the Jido / Jido.AI / Jason surface. Catches undefined-ref / arity-drift / syntax bugs without needing the real deps. Stubs live at `bin/lint/jido_stubs.ex` — see `plan.md` for the replacement task.
 
 ## Versions
 

@@ -20,3 +20,10 @@ end
 if autonomy = System.get_env("JIDO_HPC_AUTONOMY") do
   config :jido_hpc, autonomy: String.to_existing_atom(autonomy)
 end
+
+# Audit log path. Set to "disabled" to turn off submission auditing.
+case System.get_env("JIDO_HPC_AUDIT_LOG") do
+  nil -> :ok
+  "disabled" -> config :jido_hpc, audit_log_path: :disabled
+  path -> config :jido_hpc, audit_log_path: path
+end

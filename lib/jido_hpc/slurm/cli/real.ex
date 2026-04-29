@@ -313,9 +313,9 @@ defmodule JidoHpc.Slurm.CLI.Real do
 
   # ---- subprocess plumbing ---------------------------------------------
 
-  defp run_validated(cmd, args) do
+  defp run_validated(cmd, args, opts \\ []) do
     with {:ok, {c, a}} <- CmdGuard.validate(cmd, args),
-         {:ok, {out, 0}} <- run(c, a) do
+         {:ok, {out, 0}} <- run(c, a, opts) do
       {:ok, out}
     else
       {:ok, {out, status}} -> {:error, {:nonzero_exit, status, out}}
@@ -323,15 +323,26 @@ defmodule JidoHpc.Slurm.CLI.Real do
     end
   end
 
-  defp run(cmd, args) do
-    case RateLimiter.run(fn -> System.cmd(cmd, args, stderr_to_stdout: true) end) do
+  defp run(cmd, args, opts \\ []) do
+    cmd_opts =
+      case Keyword.get(opts, :merge_stderr, true) do
+        true -> [stderr_to_stdout: true]
+        false -> []
+      end
+
+    case RateLimiter.run(fn -> System.cmd(cmd, args, cmd_opts) end) do
       {:error, :rate_limited} = err -> err
       {output, status} -> {:ok, {output, status}}
     end
   end
 
+  # JSON commands MUST NOT merge stderr — Slurm sometimes prints
+  # warnings ("slurmctld: warning: ...") that would otherwise corrupt
+  # the JSON document on stdout and cause Jason.decode to fail. Stderr
+  # is dropped on the floor; if you want it for diagnostics, use the
+  # --parsable2 path instead.
   defp json_run(cmd, args) do
-    case run_validated(cmd, args) do
+    case run_validated(cmd, args, merge_stderr: false) do
       {:ok, out} -> decode_json(out)
       err -> err
     end
