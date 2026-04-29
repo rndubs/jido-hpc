@@ -51,10 +51,11 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [x] Tests use a stubbed `Slurm.CLI` (`JidoHpc.Test.SlurmCLIStub`, ETS-backed FIFO queue keyed by owner pid) — no real cluster needed in CI
 
 ### Phase 3 — Skills wiring
-- [ ] `JidoHpc.Skills.SlurmSkill` (`use Jido.Plugin`) bundles all `Slurm.*` actions
-- [ ] `SlurmSkill.child_spec/1` starts the `SlurmJobSensor` under the skill
-- [ ] Signal routes: `slurm.job.completed`, `slurm.job.failed`, `slurm.job.preempted`
-- [ ] `JidoHpc.Agents.CodingAgent` (`use Jido.AI.Agent`) wires in `[SlurmSkill, ShellSkill, GitSkill]`
+- [x] `JidoHpc.Skills.SlurmSkill` (`use Jido.Plugin`) bundles all `Slurm.*` actions
+- [x] `SlurmSkill.child_spec/1` starts the `SlurmJobSensor` under the skill (sensor opts forwarded via `config[:sensor]`)
+- [x] Signal routes: `slurm.job.completed` → `Sacct`, `slurm.job.failed` → `Sacct`, `slurm.job.preempted` → `Status` (declared in the plugin's `signal_routes:`)
+- [x] `JidoHpc.Agents.CodingAgent` (`use Jido.AI.Agent`) wires in `[SlurmSkill, ShellSkill, GitSkill]` with an HPC-specific system prompt
+- [-] Live agent boot + tool dispatch test deferred — requires `mix deps.get` (blocked in this sandbox, see Phase 0). Static loadable/contract tests added in `test/jido_hpc/skills/skills_test.exs` and `test/jido_hpc/agents/coding_agent_test.exs`.
 
 ### Phase 4 — Agent UX
 - [ ] CLI entry point (`mix jido_hpc.repl` or escript) — prompt → stream → render tool calls
