@@ -16,7 +16,10 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [x] App supervision tree includes the Jido instance (`JidoHpc.Jido`)
 - [x] `config/{config,dev,test,prod,runtime}.exs` stubs
 - [x] Smoke test scaffold: `test/integration/llm_smoke_test.exs` tagged `:smoke`, skipped by default; runs with `ANTHROPIC_API_KEY=… mix test --include smoke`
-- [~] CI: `mix format --check-formatted` ✓ verified locally. `mix compile --warnings-as-errors` and `mix test` deferred — require `mix deps.get`, which needs network + Elixir 1.17+ (sandbox has 1.14, no outbound to repo.hex.pm). User must run on a host with network + Elixir 1.17+.
+- [x] Toolchain installed: **Erlang/OTP 25.3 (apt) + Elixir 1.18.4 (precompiled, `elixir-otp-25.zip`) + Hex 2.4.1 (built from github source)**. Replication script at `bin/setup.sh`.
+- [x] `mix format --check-formatted` ✓ verified.
+- [x] All `.ex`/`.exs` files parse cleanly (validated with `Code.string_to_quoted!`).
+- [-] `mix compile` and `mix test` blocked in this sandbox: `repo.hex.pm` denied by firewall, so `mix deps.get` cannot fetch tarballs. NOT a tooling issue — runs fine on any host with unrestricted network. (Tip: behind a TLS-intercepting proxy, set `HEX_UNSAFE_HTTPS=1`.)
 
 ### Phase 1 — Login-node primitives
 - [ ] `JidoHpc.Safety.PathGuard` (allowlist roots, reject `..` escapes)

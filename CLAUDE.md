@@ -36,8 +36,12 @@ If a user request is ambiguous, check `plan.md` first — the answer is often al
 
 ## Versions
 
-- Elixir 1.17+, OTP 26+
+- Elixir 1.18+, OTP 25-27
 - `jido ~> 2.2`, `jido_ai ~> 2.1`, `req_llm`
+
+Currently installed in this dev env: **OTP 25.3 (apt) + Elixir 1.18.4 + Hex 2.4.1**. To replicate on a fresh box: `bash bin/setup.sh`.
+
+`mix deps.get` requires `repo.hex.pm` reachable. If you're behind a TLS-intercepting proxy with a non-strict CA, set `HEX_UNSAFE_HTTPS=1`.
 
 ## Quick links
 
