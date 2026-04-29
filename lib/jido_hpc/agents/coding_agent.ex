@@ -31,10 +31,24 @@ defmodule JidoHpc.Agents.CodingAgent do
     name: "jido_hpc_coding_agent",
     description:
       "HPC coding agent: drives Slurm and edits files on the login node via typed Jido actions.",
-    skills: [
-      JidoHpc.Skills.SlurmSkill,
-      JidoHpc.Skills.ShellSkill,
-      JidoHpc.Skills.GitSkill
+    tools: [
+      JidoHpc.Actions.Slurm.Submit,
+      JidoHpc.Actions.Slurm.Cancel,
+      JidoHpc.Actions.Slurm.Status,
+      JidoHpc.Actions.Slurm.Sacct,
+      JidoHpc.Actions.Slurm.Sinfo,
+      JidoHpc.Actions.Slurm.TemplateScript,
+      JidoHpc.Actions.Slurm.WaitForJob,
+      JidoHpc.Actions.Bash.Run,
+      JidoHpc.Actions.FS.Read,
+      JidoHpc.Actions.FS.Write,
+      JidoHpc.Actions.FS.Edit,
+      JidoHpc.Actions.FS.Grep,
+      JidoHpc.Actions.FS.Ls,
+      JidoHpc.Actions.FS.Glob,
+      JidoHpc.Actions.Git.Status,
+      JidoHpc.Actions.Git.Diff,
+      JidoHpc.Actions.Git.Log
     ],
     system_prompt: """
     You are the jido_hpc coding agent, running on an HPC login node.

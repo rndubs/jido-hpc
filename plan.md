@@ -20,6 +20,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [x] `mix format --check-formatted` ✓ verified.
 - [x] All `.ex`/`.exs` files parse cleanly (validated with `Code.string_to_quoted!`).
 - [-] `mix compile` and `mix test` blocked in this sandbox: `repo.hex.pm` denied by firewall, so `mix deps.get` cannot fetch tarballs. NOT a tooling issue — runs fine on any host with unrestricted network. (Tip: behind a TLS-intercepting proxy, set `HEX_UNSAFE_HTTPS=1`.) Phase 2 was likewise written without local compilation; once deps are installed run `mix format --check-formatted && mix compile --warnings-as-errors && mix test`.
+- [ ] TODO - high priority! Add a graceful fallback if the .env variables are not set, such as the anthropic API key.
 
 ### Phase 1 — Login-node primitives
 - [x] `JidoHpc.Safety.PathGuard` (allowlist roots, reject `..` escapes)

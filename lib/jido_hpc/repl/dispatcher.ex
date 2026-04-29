@@ -34,10 +34,10 @@ defmodule JidoHpc.REPL.Dispatcher.Live do
 
   @impl true
   def ask_stream(agent, prompt, opts) do
-    if function_exported?(agent, :ask_stream, 3) do
-      apply(agent, :ask_stream, [agent, prompt, opts])
+    if function_exported?(agent, :ask, 3) do
+      apply(agent, :ask, [agent, prompt, opts])
     else
-      {:error, {:not_loaded, {agent, :ask_stream, 3}}}
+      {:error, {:not_loaded, {agent, :ask, 3}}}
     end
   end
 
