@@ -32,34 +32,20 @@ defmodule JidoHpc.AuditLogTest do
     contents = File.read!(path)
     [line] = String.split(contents, "\n", trim: true)
 
-    if Code.ensure_loaded?(Jason) do
-      decoded = apply(Jason, :decode!, [line])
-      assert decoded["event"] == "slurm_submit"
-      assert decoded["session_id"] == "abc"
-      assert decoded["job_id"] == "12345"
-      assert decoded["submitted"] == true
-      assert is_binary(decoded["ts"])
-    else
-      # Fallback encoding: Elixir inspect text — just sanity-check
-      # that the required fields show up in the line.
-      assert line =~ "slurm_submit"
-      assert line =~ "abc"
-      assert line =~ "12345"
-      assert line =~ "ts:"
-    end
+    decoded = Jason.decode!(line)
+    assert decoded["event"] == "slurm_submit"
+    assert decoded["session_id"] == "abc"
+    assert decoded["job_id"] == "12345"
+    assert decoded["submitted"] == true
+    assert is_binary(decoded["ts"])
   end
 
   test "append/1 auto-stamps :ts if not provided", %{path: path} do
     {:ok, _} = AuditLog.append(%{event: :slurm_submit})
 
     line = File.read!(path) |> String.trim()
-
-    if Code.ensure_loaded?(Jason) do
-      assert %{"ts" => ts} = apply(Jason, :decode!, [line])
-      assert {:ok, _, _} = DateTime.from_iso8601(ts)
-    else
-      assert line =~ "ts:"
-    end
+    assert %{"ts" => ts} = Jason.decode!(line)
+    assert {:ok, _, _} = DateTime.from_iso8601(ts)
   end
 
   test "multiple appends produce one line each", %{path: path} do
@@ -91,5 +77,24 @@ defmodule JidoHpc.AuditLogTest do
     b = AuditLog.new_session_id()
     assert a != b
     assert is_binary(a) and byte_size(a) > 8
+  end
+
+  test "concurrent appends never interleave half-lines", %{path: path} do
+    # 30 tasks racing each other through the writer. If the
+    # `:global` lock id is wrong (e.g. includes self() so each pid
+    # gets a different id), partial writes will leave at least one
+    # malformed line and the JSON decode below will explode.
+    1..30
+    |> Enum.map(fn i ->
+      Task.async(fn -> AuditLog.append(%{event: :slurm_submit, job_id: "#{i}"}) end)
+    end)
+    |> Enum.each(&Task.await(&1, 5_000))
+
+    lines = File.read!(path) |> String.split("\n", trim: true)
+    assert length(lines) == 30
+
+    decoded = Enum.map(lines, &Jason.decode!/1)
+    seen_ids = decoded |> Enum.map(& &1["job_id"]) |> Enum.sort()
+    assert seen_ids == Enum.map(1..30, &"#{&1}") |> Enum.sort()
   end
 end

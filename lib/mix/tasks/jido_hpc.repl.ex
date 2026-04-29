@@ -38,11 +38,32 @@ defmodule Mix.Tasks.JidoHpc.Repl do
       []
       |> maybe_put(:autonomy, if(opts[:autonomous], do: :autonomous, else: nil))
       |> maybe_put(:session_id, opts[:session])
-      |> maybe_put(:agent, opts[:agent] && Module.concat([opts[:agent]]))
+      |> maybe_put(:agent, resolve_agent(opts[:agent]))
 
     JidoHpc.REPL.run(repl_opts)
   end
 
   defp maybe_put(kw, _key, nil), do: kw
   defp maybe_put(kw, key, value), do: Keyword.put(kw, key, value)
+
+  # Look up an already-loaded module by name. Refuses to atomize
+  # arbitrary CLI input (avoids atom-table DoS) and refuses unknown
+  # modules with a clear Mix error rather than a silent fallthrough
+  # to "function_exported? = false".
+  defp resolve_agent(nil), do: nil
+
+  defp resolve_agent(name) when is_binary(name) do
+    full = if String.starts_with?(name, "Elixir."), do: name, else: "Elixir." <> name
+
+    try do
+      mod = String.to_existing_atom(full)
+
+      case Code.ensure_loaded(mod) do
+        {:module, ^mod} -> mod
+        _ -> Mix.raise("Unknown agent module: #{name}")
+      end
+    rescue
+      ArgumentError -> Mix.raise("Unknown agent module: #{name}")
+    end
+  end
 end

@@ -41,26 +41,54 @@ defmodule JidoHpc.Actions.Slurm.WaitForJob do
   defp poll(id, interval, deadline) do
     case current_state(id) do
       {:ok, state, fields} ->
-        atom = Job.parse_state(state)
-
-        cond do
-          Job.terminal?(atom) ->
-            {:ok, %{job_id: id, state: atom, raw_state: state, fields: fields}}
-
-          System.monotonic_time(:millisecond) >= deadline ->
-            {:error, :timeout}
-
-          true ->
-            Process.sleep(interval)
-            poll(id, interval, deadline)
-        end
+        terminate_or_wait(id, state, fields, interval, deadline)
 
       {:error, :not_found} ->
         # Job is no longer in squeue — pull from sacct for final state.
-        sacct_lookup(id)
+        # If sacct returns a non-terminal row (rare but possible — e.g.
+        # the job was briefly absent from squeue between poll cycles),
+        # treat it like any other non-terminal state and keep waiting.
+        case sacct_lookup(id) do
+          {:ok, %{state: atom, raw_state: rs, fields: f}} when atom != :unknown ->
+            terminate_or_wait(id, rs, f, interval, deadline)
+
+          {:ok, _} = ambiguous ->
+            ambiguous
+
+          {:error, :not_found} ->
+            wait_or_timeout(id, interval, deadline)
+
+          {:error, _} = err ->
+            err
+        end
 
       {:error, _} = err ->
         err
+    end
+  end
+
+  defp terminate_or_wait(id, state, fields, interval, deadline) do
+    atom = Job.parse_state(state)
+
+    cond do
+      Job.terminal?(atom) ->
+        {:ok, %{job_id: id, state: atom, raw_state: state, fields: fields}}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:error, :timeout}
+
+      true ->
+        Process.sleep(interval)
+        poll(id, interval, deadline)
+    end
+  end
+
+  defp wait_or_timeout(id, interval, deadline) do
+    if System.monotonic_time(:millisecond) >= deadline do
+      {:error, :timeout}
+    else
+      Process.sleep(interval)
+      poll(id, interval, deadline)
     end
   end
 

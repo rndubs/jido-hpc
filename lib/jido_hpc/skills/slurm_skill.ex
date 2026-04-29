@@ -22,12 +22,17 @@ defmodule JidoHpc.Skills.SlurmSkill do
 
   ## Signal routes
 
-  Terminal Slurm transitions are routed back into the agent so it can
-  react (e.g. summarize logs on completion, retry on preemption):
+  Every terminal Slurm state is routed back into the agent so it can
+  react (e.g. summarize logs on completion, retry on preemption,
+  enlarge memory on OOM, resubmit on node failure):
 
-      slurm.job.completed → JidoHpc.Actions.Slurm.Sacct
-      slurm.job.failed    → JidoHpc.Actions.Slurm.Sacct
-      slurm.job.preempted → JidoHpc.Actions.Slurm.Status
+      slurm.job.completed  → JidoHpc.Actions.Slurm.Sacct
+      slurm.job.failed     → JidoHpc.Actions.Slurm.Sacct
+      slurm.job.timeout    → JidoHpc.Actions.Slurm.Sacct
+      slurm.job.oom        → JidoHpc.Actions.Slurm.Sacct
+      slurm.job.cancelled  → JidoHpc.Actions.Slurm.Sacct
+      slurm.job.node_fail  → JidoHpc.Actions.Slurm.Sacct
+      slurm.job.preempted  → JidoHpc.Actions.Slurm.Status
 
   Non-terminal transitions (`slurm.job.transition`) are emitted by the
   sensor but intentionally not routed — they're informational and the
@@ -52,6 +57,10 @@ defmodule JidoHpc.Skills.SlurmSkill do
     signal_routes: [
       {"slurm.job.completed", JidoHpc.Actions.Slurm.Sacct},
       {"slurm.job.failed", JidoHpc.Actions.Slurm.Sacct},
+      {"slurm.job.timeout", JidoHpc.Actions.Slurm.Sacct},
+      {"slurm.job.oom", JidoHpc.Actions.Slurm.Sacct},
+      {"slurm.job.cancelled", JidoHpc.Actions.Slurm.Sacct},
+      {"slurm.job.node_fail", JidoHpc.Actions.Slurm.Sacct},
       {"slurm.job.preempted", JidoHpc.Actions.Slurm.Status}
     ],
     category: "slurm",

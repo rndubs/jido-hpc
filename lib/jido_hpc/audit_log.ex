@@ -105,8 +105,13 @@ defmodule JidoHpc.AuditLog do
   end
 
   @doc "Resolve the audit log path without writing to it."
-  @spec path() :: {:ok, Path.t()} | {:error, term()}
-  def path, do: ensure_log_path()
+  @spec path() :: {:ok, Path.t()} | :disabled | {:error, term()}
+  def path do
+    case resolve_path() do
+      :disabled -> :disabled
+      _ -> ensure_log_path()
+    end
+  end
 
   # ---- internals --------------------------------------------------------
 
@@ -114,8 +119,11 @@ defmodule JidoHpc.AuditLog do
     path = resolve_path()
     dir = Path.dirname(path)
 
-    with :ok <- File.mkdir_p(dir),
-         _ <- File.chmod(dir, 0o700) do
+    with :ok <- File.mkdir_p(dir) do
+      # Best-effort dir chmod — fails silently on shared dirs we don't
+      # own (e.g. /tmp). The file itself is chmod'd 0600 in
+      # ensure_chmod/1, which is the actual data protection.
+      _ = File.chmod(dir, 0o700)
       {:ok, path}
     end
   end
@@ -152,32 +160,43 @@ defmodule JidoHpc.AuditLog do
   end
 
   defp encode(entry) do
-    if Code.ensure_loaded?(Jason) do
-      try do
-        {:ok, apply(Jason, :encode!, [entry]) <> "\n"}
-      rescue
-        e -> {:error, {:encode_failed, Exception.message(e)}}
-      end
-    else
-      # Pure-Erlang fallback so the module is self-contained even
-      # before deps land. Inspects with limit: :infinity; one event
-      # per line, deterministic ordering on Elixir 1.18+.
-      {:ok, inspect(entry, limit: :infinity, printable_limit: :infinity) <> "\n"}
-    end
+    {:ok, Jason.encode!(entry) <> "\n"}
+  rescue
+    e -> {:error, {:encode_failed, Exception.message(e)}}
   end
 
+  # Cross-pid mutex. The lock id MUST NOT include `self()` — `:global`
+  # locks are re-entrant on the same id, so a unique-per-pid id would
+  # mean every caller acquires immediately and the "lock" is a no-op.
   defp write_line(path, line) do
-    :global.set_lock({@lock_name, self()}, [node()])
+    :global.set_lock(@lock_name, [node()])
 
     try do
-      with {:ok, fd} <- File.open(path, [:append, :raw, :delayed_write]),
+      ensure_chmod(path)
+
+      with {:ok, fd} <- File.open(path, [:append, :raw]),
            :ok <- :file.write(fd, line),
-           :ok <- File.close(fd),
-           _ <- File.chmod(path, 0o600) do
+           :ok <- File.close(fd) do
         :ok
       end
     after
-      :global.del_lock({@lock_name, self()}, [node()])
+      :global.del_lock(@lock_name, [node()])
+    end
+  end
+
+  # Touch the file with mode 0600 if missing, so audit data is never
+  # written to a world-readable file even briefly. If the file already
+  # exists with the right mode this is a cheap no-op.
+  defp ensure_chmod(path) do
+    case File.exists?(path) do
+      true ->
+        :ok
+
+      false ->
+        with :ok <- File.touch(path),
+             :ok <- File.chmod(path, 0o600) do
+          :ok
+        end
     end
   end
 end

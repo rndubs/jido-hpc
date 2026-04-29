@@ -102,11 +102,22 @@ defmodule JidoHpc.Slurm.Job do
   def parse_state(nil), do: :unknown
 
   def parse_state(s) when is_binary(s) do
-    case s |> String.trim() |> String.upcase() |> String.split("+", parts: 2) |> hd() do
+    # Slurm state strings may carry annotations like "CANCELLED+",
+    # "CANCELLED by 1234" (sacct), or "RUNNING (Reason)". Trim, upper,
+    # then take the first token by either '+' or whitespace.
+    head =
+      s
+      |> String.trim()
+      |> String.upcase()
+      |> String.split(["+", " ", "\t"], parts: 2)
+      |> hd()
+
+    case head do
       "PENDING" -> :pending
       "CONFIGURING" -> :pending
       "REQUEUED" -> :pending
       "RESV_DEL_HOLD" -> :pending
+      "SUSPENDED" -> :pending
       "RUNNING" -> :running
       "COMPLETING" -> :running
       "SIGNALING" -> :running
@@ -120,6 +131,7 @@ defmodule JidoHpc.Slurm.Job do
       "OUT_OF_MEMORY" -> :oom
       "OOM" -> :oom
       "CANCELLED" -> :cancelled
+      "REVOKED" -> :cancelled
       "NODE_FAIL" -> :node_fail
       "PREEMPTED" -> :preempted
       _ -> :unknown
@@ -134,7 +146,16 @@ defmodule JidoHpc.Slurm.Job do
   @spec update(t(), map()) :: {t(), boolean()}
   def update(%__MODULE__{} = job, fields) when is_map(fields) do
     raw = Map.get(fields, :state) || Map.get(fields, "state")
-    next = parse_state(raw)
+    parsed = parse_state(raw)
+
+    # Refuse terminal -> non-terminal regressions. Once a job has
+    # reached a terminal state, later refreshes (e.g. a delayed sacct
+    # row reusing a recycled job id) must not flip it back.
+    next =
+      cond do
+        terminal?(job.state) and not terminal?(parsed) -> job.state
+        true -> parsed
+      end
 
     new_job = %{
       job

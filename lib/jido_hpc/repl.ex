@@ -94,6 +94,10 @@ defmodule JidoHpc.REPL do
 
   defp handle_prompt(state, prompt) do
     prompt_hash = AuditLog.hash_prompt(prompt)
+    # Stash the hash so the plan-first re-submit (which fires from
+    # render_event/2 well after we leave this function) can attach
+    # the same correlation tag to its audit entry.
+    state = %{state | last_prompt_hash: prompt_hash}
 
     ctx = %{
       session_id: state.session_id,
@@ -180,9 +184,20 @@ defmodule JidoHpc.REPL do
     ])
 
     if state.io.confirm.("approve and submit? [y/N]: ") do
-      params = Map.merge(submit_params(result), %{confirm: true})
+      # Carry the session_id and prompt_hash through the second
+      # invocation so the audit log can correlate the two entries.
+      # The original session_id was attached to the result by
+      # `Slurm.Submit` (see `run/2`); fall back to the REPL's session
+      # if it's missing.
+      session_id = Map.get(result, :session_id) || state.session_id
+      ctx = %{session_id: session_id, prompt_hash: state.last_prompt_hash}
 
-      case state.dispatcher.run_action(JidoHpc.Actions.Slurm.Submit, params, %{}) do
+      params =
+        result
+        |> submit_params()
+        |> Map.merge(%{confirm: true, session_id: session_id})
+
+      case state.dispatcher.run_action(JidoHpc.Actions.Slurm.Submit, params, ctx) do
         {:ok, %{job_id: id}} ->
           state.io.write.(["[approved] submitted as ", to_string(id), "\n"])
 
@@ -200,9 +215,17 @@ defmodule JidoHpc.REPL do
     Map.from_struct(spec)
   end
 
+  @banner_width 60
+  @banner_line String.duplicate("─", @banner_width)
+
+  # Both banner lines have the same on-screen width so the rendered
+  # script lines up with its bookends.
+  defp banner(""), do: "\n" <> @banner_line <> "\n"
+
   defp banner(label) do
-    line = String.duplicate("─", 60)
-    "\n" <> line <> if(label == "", do: "\n", else: " " <> label <> " " <> line <> "\n")
+    prefix = "── " <> label <> " "
+    fill_len = max(@banner_width - String.length(prefix), 0)
+    "\n" <> prefix <> String.duplicate("─", fill_len) <> "\n"
   end
 
   # ---- Setup ------------------------------------------------------------
@@ -212,6 +235,7 @@ defmodule JidoHpc.REPL do
       agent: Keyword.get(opts, :agent, JidoHpc.Agents.CodingAgent),
       io: Keyword.get(opts, :io, default_io()),
       session_id: Keyword.get(opts, :session_id, AuditLog.new_session_id()),
+      last_prompt_hash: nil,
       autonomy:
         Keyword.get(
           opts,

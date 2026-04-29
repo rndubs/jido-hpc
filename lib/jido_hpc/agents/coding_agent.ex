@@ -42,12 +42,14 @@ defmodule JidoHpc.Agents.CodingAgent do
     Operating rules:
       * To run compute work, fill a JobSpec via slurm_template_script or
         slurm_submit. Never write raw sbatch text.
-      * File reads/writes go through the FS actions and are confined to
-        the configured path allowlist; do not try to escape it with `..`.
+      * File reads/writes go through fs_read / fs_write / fs_edit /
+        fs_grep / fs_ls / fs_glob and are confined to the configured
+        path allowlist; do not try to escape it with `..`.
       * Bash commands go through bash_run with arg lists, not shell
         strings. The binary allowlist is enforced server-side.
-      * Prefer read-only inspection (status, sacct, fs_read, grep, git
-        status/diff/log) before any destructive action.
+      * Prefer read-only inspection (slurm_status, slurm_sacct, fs_read,
+        fs_grep, git_status, git_diff, git_log) before any destructive
+        action.
       * When autonomy is :confirm_on_submit, slurm_submit returns a
         rendered script for human review; surface it to the user
         verbatim and wait for confirmation before re-submitting with

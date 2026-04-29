@@ -137,11 +137,33 @@ defmodule JidoHpc.Sensors.SlurmJobSensor do
       Enum.reduce(state.jobs, %{}, fn {id, job}, acc ->
         case refresh(id, job) do
           {:ok, updated, transitioned?} ->
-            if transitioned?, do: emit(state.dispatch, updated, job.state)
+            # Always emit when the job is terminal — even if the state
+            # didn't change since the last poll (e.g. a tracked-from-
+            # startup job that was already terminal on first refresh).
+            # Otherwise listeners can miss the only terminal signal.
+            cond do
+              Job.terminal?(updated) ->
+                emit(state.dispatch, updated, job.state)
+                acc
 
-            if Job.terminal?(updated),
-              do: acc,
-              else: Map.put(acc, id, updated)
+              transitioned? ->
+                emit(state.dispatch, updated, job.state)
+                Map.put(acc, id, updated)
+
+              true ->
+                Map.put(acc, id, updated)
+            end
+
+          {:not_found, _} ->
+            # Both squeue and sacct returned []. Leave the job tracked
+            # (the state machine never transitions away from this), but
+            # log so an operator can investigate stuck-pending jobs.
+            Logger.warning(
+              "SlurmJobSensor: job #{id} not found in squeue or sacct " <>
+                "(state remains #{inspect(job.state)})"
+            )
+
+            Map.put(acc, id, job)
 
           {:error, reason} ->
             Logger.debug("SlurmJobSensor: refresh #{id} failed: #{inspect(reason)}")
@@ -166,7 +188,7 @@ defmodule JidoHpc.Sensors.SlurmJobSensor do
             {:ok, next, transitioned?}
 
           {:ok, []} ->
-            {:ok, job, false}
+            {:not_found, id}
 
           err ->
             err

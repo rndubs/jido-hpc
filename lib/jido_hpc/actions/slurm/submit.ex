@@ -73,22 +73,43 @@ defmodule JidoHpc.Actions.Slurm.Submit do
 
   @impl true
   def run(params, ctx) do
+    # session_id / prompt_hash are session-scoped and so are most
+    # naturally passed via `ctx` (the agent's run context). Fall back
+    # to the action params for callers that don't have a ctx surface
+    # (e.g. the REPL's plan-first re-submit), and finally to a fresh
+    # session id so an audit row is always self-describing.
+    session_id =
+      Map.get(params, :session_id) ||
+        Map.get(ctx, :session_id) ||
+        AuditLog.new_session_id()
+
+    prompt_hash =
+      Map.get(params, :prompt_hash) || Map.get(ctx, :prompt_hash)
+
     template_params = Map.drop(params, [:confirm, :autonomy, :session_id, :prompt_hash])
+    autonomy = effective_autonomy(params)
 
     with {:ok, %{spec: spec, script: script, workdir: workdir}} <-
            TemplateScript.run(template_params, ctx),
-         {:ok, script_path} <- write_script(workdir, spec.name, script),
-         autonomy = effective_autonomy(params),
-         {:ok, result} <- maybe_submit(script_path, spec, autonomy, params.confirm) do
-      audit(params, autonomy, script_path, result)
+         {:ok, script_path} <- write_script(workdir, spec.name, script) do
+      result = do_submit(script_path, spec, autonomy, params.confirm)
 
-      {:ok,
-       Map.merge(result, %{
-         spec: spec,
-         script: script,
-         script_path: script_path,
-         autonomy: autonomy
-       })}
+      audit(session_id, prompt_hash, autonomy, script_path, result)
+
+      case result do
+        {:ok, ok_map} ->
+          {:ok,
+           Map.merge(ok_map, %{
+             spec: spec,
+             script: script,
+             script_path: script_path,
+             autonomy: autonomy,
+             session_id: session_id
+           })}
+
+        {:error, _} = err ->
+          err
+      end
     end
   end
 
@@ -98,11 +119,11 @@ defmodule JidoHpc.Actions.Slurm.Submit do
     Application.get_env(:jido_hpc, :autonomy, :confirm_on_submit)
   end
 
-  defp maybe_submit(_path, _spec, :confirm_on_submit, false) do
+  defp do_submit(_path, _spec, :confirm_on_submit, false) do
     {:ok, %{submitted: false, job_id: nil, reason: :awaiting_confirmation}}
   end
 
-  defp maybe_submit(path, spec, _autonomy, _confirm) do
+  defp do_submit(path, spec, _autonomy, _confirm) do
     case CLI.sbatch(path, spec) do
       {:ok, %{job_id: id, stdout: out}} ->
         {:ok, %{submitted: true, job_id: id, sbatch_stdout: out}}
@@ -112,15 +133,23 @@ defmodule JidoHpc.Actions.Slurm.Submit do
     end
   end
 
-  defp audit(params, autonomy, script_path, result) do
+  defp audit(session_id, prompt_hash, autonomy, script_path, result) do
+    {submitted, job_id, error} =
+      case result do
+        {:ok, %{submitted: s, job_id: id}} -> {s, id, nil}
+        {:ok, %{submitted: s}} -> {s, nil, nil}
+        {:error, reason} -> {false, nil, inspect(reason)}
+      end
+
     AuditLog.append(%{
       event: :slurm_submit,
-      session_id: Map.get(params, :session_id) || AuditLog.new_session_id(),
-      prompt_hash: Map.get(params, :prompt_hash),
-      job_id: Map.get(result, :job_id),
+      session_id: session_id,
+      prompt_hash: prompt_hash,
+      job_id: job_id,
       sbatch_path: script_path,
       autonomy: autonomy,
-      submitted: Map.get(result, :submitted, false)
+      submitted: submitted,
+      error: error
     })
   end
 
@@ -128,6 +157,7 @@ defmodule JidoHpc.Actions.Slurm.Submit do
     dir = Path.join([workdir, ".jido_hpc", "sbatch"])
 
     with :ok <- File.mkdir_p(dir) do
+      _ = File.chmod(dir, 0o700)
       filename = "#{name}-#{:erlang.unique_integer([:positive])}.sh"
       path = Path.join(dir, filename)
 
