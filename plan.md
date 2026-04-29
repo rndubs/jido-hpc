@@ -58,11 +58,12 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [-] Live agent boot + tool dispatch test deferred — requires `mix deps.get` (blocked in this sandbox, see Phase 0). Static loadable/contract tests added in `test/jido_hpc/skills/skills_test.exs` and `test/jido_hpc/agents/coding_agent_test.exs`.
 
 ### Phase 4 — Agent UX
-- [ ] CLI entry point (`mix jido_hpc.repl` or escript) — prompt → stream → render tool calls
-- [ ] "Plan first" mode: render `JobSpec` for human approval before `sbatch` (configurable)
-- [ ] Autonomy levels: `:confirm_on_submit` (default) and `:autonomous` (audit-only)
-- [ ] Structured audit log: `{session_id, prompt_hash, JobID, sbatch_path}` per submission
-- [ ] Streaming token output in the CLI
+- [x] CLI entry point: `mix jido_hpc.repl` (`lib/mix/tasks/jido_hpc.repl.ex`) thin wrapper around `JidoHpc.REPL.run/1`. Flags: `--autonomous`, `--session <id>`, `--agent <module>`.
+- [x] "Plan first" mode: when `slurm_submit` returns `submitted: false, reason: :awaiting_confirmation`, the REPL prints the rendered script + path and prompts `approve and submit? [y/N]:`. Approval re-runs `Slurm.Submit` with `confirm: true`. Configurable via `--autonomous` or `JIDO_HPC_AUTONOMY`.
+- [x] Autonomy levels honored end-to-end: `:confirm_on_submit` (default) gates submission; `:autonomous` submits immediately. Both paths are audit-logged.
+- [x] `JidoHpc.AuditLog` writes JSON-lines (Jason when loaded, `inspect/2` fallback) with `{ts, session_id, prompt_hash, job_id, sbatch_path, autonomy, submitted, event}`. Path resolved from `:jido_hpc, :audit_log_path` → `JIDO_HPC_AUDIT_LOG` → `$XDG_CONFIG_HOME/jido_hpc/audit.log` → `~/.config/jido_hpc/audit.log`. Set to `:disabled` (or env `disabled`) to opt out. File chmod 0600, dir 0700, `:global` lock for concurrent-safe writes.
+- [x] Streaming via injectable `JidoHpc.REPL.Dispatcher` (Live impl forwards to `Jido.AI.Agent.ask_stream/3` + `await/2`). `:assistant_token`, `:tool_call`, `:tool_result`, `:request_completed` are rendered explicitly; unknown event kinds are surfaced via `inspect/2` rather than dropped.
+- [-] Live REPL boot test deferred — needs `mix deps.get`. Static tests cover: AuditLog write/encode/perm bits/hash determinism (`test/jido_hpc/audit_log_test.exs`), REPL token rendering / tool-call rendering / plan-first approve+skip / EOF + exit (`test/jido_hpc/repl_test.exs`, via `JidoHpc.Test.REPLDispatcherStub`), audit-log integration in `Slurm.Submit` (`test/jido_hpc/actions/slurm/submit_test.exs`).
 
 ### Phase 5 — Quality of life
 - [ ] Lmod actions: `Modules.{Load, List, Spider}`

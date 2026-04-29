@@ -108,4 +108,33 @@ defmodule JidoHpc.Actions.Slurm.SubmitTest do
 
     assert {:error, {:sbatch_failed, _}} = Submit.run(base(root), %{})
   end
+
+  test "writes an audit-log entry on submission", %{root: root} do
+    Application.put_env(:jido_hpc, :autonomy, :autonomous)
+
+    audit_path = Path.join(root, "audit.log")
+    Application.put_env(:jido_hpc, :audit_log_path, audit_path)
+
+    on_exit(fn ->
+      Application.put_env(:jido_hpc, :audit_log_path, :disabled)
+    end)
+
+    SlurmCLIStub.expect(:sbatch, fn _path, _spec ->
+      {:ok, %{job_id: "777", stdout: ""}}
+    end)
+
+    params =
+      Map.merge(base(root), %{
+        session_id: "sess-1",
+        prompt_hash: "hashy"
+      })
+
+    assert {:ok, %{job_id: "777"}} = Submit.run(params, %{})
+
+    assert File.exists?(audit_path)
+    contents = File.read!(audit_path)
+    assert contents =~ "sess-1"
+    assert contents =~ "hashy"
+    assert contents =~ "777"
+  end
 end

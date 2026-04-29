@@ -51,21 +51,37 @@ defmodule JidoHpc.Actions.Slurm.Submit do
         type: {:or, [:atom, nil]},
         default: nil,
         doc: "Override the default autonomy. One of :confirm_on_submit | :autonomous."
+      ],
+      session_id: [
+        type: {:or, [:string, nil]},
+        default: nil,
+        doc: "Opaque per-session id for the audit log. Generated if absent."
+      ],
+      prompt_hash: [
+        type: {:or, [:string, nil]},
+        default: nil,
+        doc:
+          "SHA-256 hex of the prompt that produced this submission. " <>
+            "Stored in the audit log so an operator can correlate without " <>
+            "logging the prompt itself."
       ]
     ]
 
   alias JidoHpc.Actions.Slurm.TemplateScript
+  alias JidoHpc.AuditLog
   alias JidoHpc.Slurm.CLI
 
   @impl true
   def run(params, ctx) do
-    template_params = Map.drop(params, [:confirm, :autonomy])
+    template_params = Map.drop(params, [:confirm, :autonomy, :session_id, :prompt_hash])
 
     with {:ok, %{spec: spec, script: script, workdir: workdir}} <-
            TemplateScript.run(template_params, ctx),
          {:ok, script_path} <- write_script(workdir, spec.name, script),
          autonomy = effective_autonomy(params),
          {:ok, result} <- maybe_submit(script_path, spec, autonomy, params.confirm) do
+      audit(params, autonomy, script_path, result)
+
       {:ok,
        Map.merge(result, %{
          spec: spec,
@@ -94,6 +110,18 @@ defmodule JidoHpc.Actions.Slurm.Submit do
       {:error, reason} ->
         {:error, {:sbatch_failed, reason}}
     end
+  end
+
+  defp audit(params, autonomy, script_path, result) do
+    AuditLog.append(%{
+      event: :slurm_submit,
+      session_id: Map.get(params, :session_id) || AuditLog.new_session_id(),
+      prompt_hash: Map.get(params, :prompt_hash),
+      job_id: Map.get(result, :job_id),
+      sbatch_path: script_path,
+      autonomy: autonomy,
+      submitted: Map.get(result, :submitted, false)
+    })
   end
 
   defp write_script(workdir, name, body) do
