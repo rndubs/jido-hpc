@@ -37,7 +37,9 @@ defmodule JidoHpc.Slurm.CLI.Real do
     |> String.split(";", parts: 2)
     |> hd()
     |> case do
-      "" -> :error
+      "" ->
+        :error
+
       id ->
         if Regex.match?(~r/^\d+(_\d+)?$/, id), do: {:ok, id}, else: :error
     end

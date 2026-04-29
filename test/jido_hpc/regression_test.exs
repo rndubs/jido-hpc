@@ -203,7 +203,10 @@ defmodule JidoHpc.RegressionTest do
 
       io = %{
         read_line: fn _ -> "exit\n" end,
-        write: fn data -> send(parent, {ref, IO.iodata_to_binary(data)}); :ok end,
+        write: fn data ->
+          send(parent, {ref, IO.iodata_to_binary(data)})
+          :ok
+        end,
         confirm: fn _ -> false end
       }
 

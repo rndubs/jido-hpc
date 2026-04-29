@@ -208,9 +208,7 @@ defmodule JidoHpc.Sensors.SlurmJobSensor do
     dispatch.(topic, %{job: job, previous_state: prev})
   catch
     kind, reason ->
-      Logger.warning(
-        "SlurmJobSensor dispatch failed: #{inspect(kind)} #{inspect(reason)}"
-      )
+      Logger.warning("SlurmJobSensor dispatch failed: #{inspect(kind)} #{inspect(reason)}")
   end
 
   # Default dispatch: try to use Jido.Signal if loaded; otherwise log.

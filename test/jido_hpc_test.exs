@@ -5,7 +5,8 @@ defmodule JidoHpcTest do
     # The Jido instance is started in JidoHpc.Application; if compilation
     # and supervision wiring is correct, the registry will exist.
     assert is_pid(Process.whereis(JidoHpc.Supervisor))
-    assert function_exported?(JidoHpc.Jido, :start_agent, 0)
+    Code.ensure_loaded(JidoHpc.Jido)
+    assert function_exported?(JidoHpc.Jido, :start_agent, 1)
   end
 
   test "config loads autonomy default" do

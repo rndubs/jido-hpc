@@ -19,8 +19,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [x] Toolchain installed: **Erlang/OTP 25.3 (apt) + Elixir 1.18.4 (precompiled, `elixir-otp-25.zip`) + Hex 2.4.1 (built from github source)**. Replication script at `bin/setup.sh`.
 - [x] `mix format --check-formatted` ✓ verified.
 - [x] All `.ex`/`.exs` files parse cleanly (validated with `Code.string_to_quoted!`).
-- [-] `mix compile` and `mix test` blocked in this sandbox: `repo.hex.pm` denied by firewall, so `mix deps.get` cannot fetch tarballs. NOT a tooling issue — runs fine on any host with unrestricted network. (Tip: behind a TLS-intercepting proxy, set `HEX_UNSAFE_HTTPS=1`.) Phase 2 was likewise written without local compilation; once deps are installed run `mix format --check-formatted && mix compile --warnings-as-errors && mix test`.
-- [ ] TODO - high priority! Add a graceful fallback if the .env variables are not set, such as the anthropic API key.
+- [x] `mix format --check-formatted && mix compile --warnings-as-errors && mix test` — verified on macOS with **Elixir 1.19.5 / OTP 28** and the real `jido 2.2 / jido_ai 2.1 / req_llm` deps installed. **186 tests, 0 failures** (1 excluded — `:smoke`).
+- [x] Graceful API-key preflight (`JidoHpc.Config.api_key_status/0`). The REPL runs it before the read loop and exits cleanly with an actionable message that names the env var, the `Application` config key, and the `.env` path when no key is set. Read-only ops (`mix test`, `mix compile`) don't need a key. Tests cover both the missing- and present-key branches.
 
 ### Phase 1 — Login-node primitives
 - [x] `JidoHpc.Safety.PathGuard` (allowlist roots, reject `..` escapes)
@@ -32,7 +32,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [x] `JidoHpc.Skills.ShellSkill` (`use Jido.Plugin`) bundles Bash + FS actions
 - [x] `JidoHpc.Skills.GitSkill`
 - [x] ExUnit tests cover happy paths AND every guardrail rejection — 84 tests, 0 failures (safety + actions + skills) running offline against a local Jido stub; will re-run against real `jido` deps once `mix deps.get` is available.
-- [ ] Manual smoke: agent edits a file via tool calls (deferred — needs live LLM + working `mix deps.get`; Phase 1 code is in place for it)
+- [~] Manual smoke: agent edits a file via tool calls. Harness landed as `mix jido_hpc.smoke` (`lib/mix/tasks/jido_hpc.smoke.ex`) — boots the app, starts `CodingAgent`, asks it to read a scratch file under `$HOME/.cache/jido_hpc/`, and verifies the reply contains the file's random token. Exits 0 on success, 1 on failure (incl. missing API key). Pending one live execution with a real `ANTHROPIC_API_KEY`.
 
 ### Phase 2 — Slurm integration
 - [x] `JidoHpc.Slurm.CLI` wrapper around `sbatch / squeue / sacct / scancel / sinfo / scontrol` (behaviour + `Real` impl; `impl()` swappable via `Application.get_env(:jido_hpc, :slurm_cli)`)

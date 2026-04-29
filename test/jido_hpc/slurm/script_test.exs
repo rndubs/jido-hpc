@@ -87,12 +87,13 @@ defmodule JidoHpc.Slurm.ScriptTest do
   end
 
   test "rejects values containing control characters" do
-    {:ok, raw} = JobSpec.new(%{
-      name: "x",
-      time: "01:00:00",
-      workdir: "/tmp/x",
-      command: ["echo"]
-    })
+    {:ok, raw} =
+      JobSpec.new(%{
+        name: "x",
+        time: "01:00:00",
+        workdir: "/tmp/x",
+        command: ["echo"]
+      })
 
     bad = %{raw | env: %{"FOO" => <<7>>}}
     assert {:error, {:unrenderable, _}} = Script.render(bad)

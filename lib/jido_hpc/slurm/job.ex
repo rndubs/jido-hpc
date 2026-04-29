@@ -174,12 +174,17 @@ defmodule JidoHpc.Slurm.Job do
 
   defp get_int(map, key) do
     case Map.get(map, key) || Map.get(map, Atom.to_string(key)) do
-      n when is_integer(n) -> n
-      n when is_binary(n) -> case Integer.parse(n) do
-        {i, ""} -> i
-        _ -> nil
-      end
-      _ -> nil
+      n when is_integer(n) ->
+        n
+
+      n when is_binary(n) ->
+        case Integer.parse(n) do
+          {i, ""} -> i
+          _ -> nil
+        end
+
+      _ ->
+        nil
     end
   end
 

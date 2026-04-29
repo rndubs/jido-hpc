@@ -41,7 +41,8 @@ defmodule JidoHpc.REPLTest do
         [
           dispatcher: REPLDispatcherStub,
           agent: __MODULE__.FakeAgent,
-          session_id: "test-session"
+          session_id: "test-session",
+          skip_api_key_check: true
         ],
         opts
       )
@@ -167,6 +168,34 @@ defmodule JidoHpc.REPLTest do
     assert :ok = run_with(io: io)
     output = out.()
     refute output =~ "[event]"
+  end
+
+  test "preflight: exits cleanly with friendly message when no API key is set" do
+    saved_app = Application.get_env(:req_llm, :anthropic_api_key)
+    saved_sys = System.get_env("ANTHROPIC_API_KEY")
+    Application.delete_env(:req_llm, :anthropic_api_key)
+    System.delete_env("ANTHROPIC_API_KEY")
+
+    on_exit(fn ->
+      if saved_app, do: Application.put_env(:req_llm, :anthropic_api_key, saved_app)
+      if saved_sys, do: System.put_env("ANTHROPIC_API_KEY", saved_sys)
+    end)
+
+    %{io: io, output: out} = test_io([])
+
+    # Bypass run_with's skip_api_key_check so the preflight actually runs.
+    assert :ok =
+             REPL.run(
+               dispatcher: REPLDispatcherStub,
+               agent: __MODULE__.FakeAgent,
+               session_id: "test-session",
+               io: io
+             )
+
+    output = out.()
+    assert output =~ "No API key found"
+    assert output =~ "ANTHROPIC_API_KEY"
+    refute output =~ "jido-hpc REPL — session"
   end
 
   defmodule FakeAgent do

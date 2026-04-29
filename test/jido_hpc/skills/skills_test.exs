@@ -66,6 +66,7 @@ defmodule JidoHpc.SkillsTest do
   end
 
   test "SlurmSkill exposes a child_spec/1 for the SlurmJobSensor" do
+    Code.ensure_loaded(JidoHpc.Skills.SlurmSkill)
     assert function_exported?(JidoHpc.Skills.SlurmSkill, :child_spec, 1)
 
     spec = JidoHpc.Skills.SlurmSkill.child_spec([])

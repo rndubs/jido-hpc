@@ -66,10 +66,34 @@ defmodule JidoHpc.REPL do
   @doc """
   Run the REPL until the user closes stdin (Ctrl-D) or types `exit`.
   Returns `:ok` after a clean shutdown.
+
+  Before entering the loop, runs `JidoHpc.Config.api_key_status/0` and
+  exits cleanly with an actionable message if no API key is configured
+  for the default LLM provider. Pass `skip_api_key_check: true` to
+  bypass the preflight (used by tests with a stub dispatcher).
   """
   @spec run(opts()) :: :ok
   def run(opts \\ []) do
     state = init_state(opts)
+
+    cond do
+      Keyword.get(opts, :skip_api_key_check, false) ->
+        start_loop(state)
+
+      true ->
+        case JidoHpc.Config.api_key_status() do
+          {:ok, %{provider: provider, source: source}} ->
+            state.io.write.("[ok] LLM provider #{provider} key loaded from #{source}\n")
+            start_loop(state)
+
+          {:error, msg} ->
+            state.io.write.(msg)
+            :ok
+        end
+    end
+  end
+
+  defp start_loop(state) do
     state.io.write.("jido-hpc REPL — session #{state.session_id}\n")
     loop(state)
   end

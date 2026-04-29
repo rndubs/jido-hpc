@@ -4,7 +4,9 @@ defmodule JidoHpc.AuditLogTest do
   alias JidoHpc.AuditLog
 
   setup do
-    dir = Path.join(System.tmp_dir!(), "jido_hpc_audit_test_#{:erlang.unique_integer([:positive])}")
+    dir =
+      Path.join(System.tmp_dir!(), "jido_hpc_audit_test_#{:erlang.unique_integer([:positive])}")
+
     File.mkdir_p!(dir)
     path = Path.join(dir, "audit.log")
     Application.put_env(:jido_hpc, :audit_log_path, path)
