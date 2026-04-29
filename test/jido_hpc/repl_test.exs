@@ -201,4 +201,74 @@ defmodule JidoHpc.REPLTest do
   defmodule FakeAgent do
     @moduledoc false
   end
+
+  describe "live boot under real Jido supervision" do
+    # Boots the actual CodingAgent under JidoHpc.Jido — the real
+    # supervision tree, real Jido.AgentServer, real plugin children
+    # (SlurmJobSensor) — then drives the REPL with the stub
+    # dispatcher. Proves the end-to-end wiring holds without an LLM
+    # call: the agent stays alive across the REPL's run, canned
+    # events render, and `exit` returns cleanly.
+
+    setup do
+      id = "repl-live-boot-#{System.unique_integer([:positive])}"
+      {:ok, pid} = JidoHpc.Jido.start_agent(JidoHpc.Agents.CodingAgent, id: id)
+
+      on_exit(fn ->
+        if Process.alive?(pid), do: JidoHpc.Jido.stop_agent(pid)
+      end)
+
+      {:ok, agent_pid: pid, agent_id: id}
+    end
+
+    test "REPL exits cleanly while a real CodingAgent is running",
+         %{agent_pid: agent_pid} do
+      %{io: io, output: out} = test_io(["exit\n"])
+
+      assert :ok =
+               REPL.run(
+                 dispatcher: REPLDispatcherStub,
+                 agent: agent_pid,
+                 session_id: "live-test-session",
+                 skip_api_key_check: true,
+                 io: io
+               )
+
+      output = out.()
+      assert output =~ "live-test-session"
+
+      assert Process.alive?(agent_pid),
+             "agent should outlive the REPL — REPL doesn't own its lifecycle"
+    end
+
+    test "REPL renders a canned stream while the agent is supervised",
+         %{agent_pid: agent_pid} do
+      REPLDispatcherStub.expect_stream([
+        %{kind: :assistant_token, data: %{token: "ping"}},
+        %{kind: :request_completed}
+      ])
+
+      %{io: io, output: out} = test_io(["hi\n"])
+
+      assert :ok =
+               REPL.run(
+                 dispatcher: REPLDispatcherStub,
+                 agent: agent_pid,
+                 session_id: "live-render-session",
+                 skip_api_key_check: true,
+                 io: io
+               )
+
+      output = out.()
+      assert output =~ "ping"
+      assert Process.alive?(agent_pid)
+
+      # The agent survives the request-with-events flow; the plugin
+      # children (sensor) should still be alive too.
+      {:ok, state} = Jido.AgentServer.state(agent_pid)
+      sensor_tag = {:plugin, JidoHpc.Skills.SlurmSkill, JidoHpc.Sensors.SlurmJobSensor}
+      sensor = Map.fetch!(state.children, sensor_tag)
+      assert Process.alive?(sensor.pid)
+    end
+  end
 end

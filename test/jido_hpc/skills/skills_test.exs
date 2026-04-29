@@ -69,7 +69,35 @@ defmodule JidoHpc.SkillsTest do
     Code.ensure_loaded(JidoHpc.Skills.SlurmSkill)
     assert function_exported?(JidoHpc.Skills.SlurmSkill, :child_spec, 1)
 
-    spec = JidoHpc.Skills.SlurmSkill.child_spec([])
-    assert %{id: JidoHpc.Sensors.SlurmJobSensor, start: {_, _, _}} = spec
+    # Jido passes config as a map at runtime; accept the keyword form
+    # too for test/script ergonomics.
+    for config <- [%{}, []] do
+      spec = JidoHpc.Skills.SlurmSkill.child_spec(config)
+      assert %{id: JidoHpc.Sensors.SlurmJobSensor, start: {_, _, _}} = spec
+    end
+  end
+
+  test "CodingAgent's hand-listed tools match the union of skill actions" do
+    # The Jido.AI.Agent macro requires `tools:` as a literal list at
+    # the call site (it can't evaluate function calls or module
+    # attributes). To avoid drift between the hand-listed tools and
+    # what each skill actually exposes, this test asserts the two
+    # sets are identical. If a skill gains or drops an action, this
+    # test fails until the agent's tools: list is updated.
+    skill_actions =
+      [JidoHpc.Skills.SlurmSkill, JidoHpc.Skills.ShellSkill, JidoHpc.Skills.GitSkill]
+      |> Enum.flat_map(& &1.actions())
+      |> MapSet.new()
+
+    agent_tools = MapSet.new(JidoHpc.Agents.CodingAgent.actions())
+
+    only_in_skills = MapSet.difference(skill_actions, agent_tools) |> MapSet.to_list()
+    only_in_agent = MapSet.difference(agent_tools, skill_actions) |> MapSet.to_list()
+
+    assert only_in_skills == [],
+           "skill actions not advertised by the agent's tools: list: #{inspect(only_in_skills)}"
+
+    assert only_in_agent == [],
+           "agent tools that no skill exposes: #{inspect(only_in_agent)}"
   end
 end

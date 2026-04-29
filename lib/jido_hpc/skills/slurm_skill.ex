@@ -74,14 +74,21 @@ defmodule JidoHpc.Skills.SlurmSkill do
   Sensor options can be overridden via the `:sensor` key in the skill
   config; everything else is forwarded straight to
   `SlurmJobSensor.start_link/1`.
+
+  Jido passes `config` as a map at runtime (`spec.config || %{}` in
+  `Jido.AgentServer.start_plugin_spec_children/3`); we also accept a
+  keyword list so test helpers and `child_spec([])` calls still work.
   """
   @impl Jido.Plugin
   def child_spec(config) do
-    sensor_opts = Keyword.get(config, :sensor, [])
+    sensor_opts = fetch_sensor_opts(config)
 
     Supervisor.child_spec(
       {SlurmJobSensor, sensor_opts},
       id: SlurmJobSensor
     )
   end
+
+  defp fetch_sensor_opts(config) when is_map(config), do: Map.get(config, :sensor, [])
+  defp fetch_sensor_opts(config) when is_list(config), do: Keyword.get(config, :sensor, [])
 end

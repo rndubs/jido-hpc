@@ -31,6 +31,11 @@ defmodule JidoHpc.Agents.CodingAgent do
     name: "jido_hpc_coding_agent",
     description:
       "HPC coding agent: drives Slurm and edits files on the login node via typed Jido actions.",
+    # `tools:` and `plugins:` are both required as literal lists by the
+    # `Jido.AI.Agent` macro (it walks the AST at compile time and can't
+    # evaluate function calls or module attributes). The two stay in
+    # sync via a regression test in `JidoHpc.SkillsTest` that asserts
+    # this list equals `union(skill.actions/0)`.
     tools: [
       JidoHpc.Actions.Slurm.Submit,
       JidoHpc.Actions.Slurm.Cancel,
@@ -49,6 +54,11 @@ defmodule JidoHpc.Agents.CodingAgent do
       JidoHpc.Actions.Git.Status,
       JidoHpc.Actions.Git.Diff,
       JidoHpc.Actions.Git.Log
+    ],
+    plugins: [
+      JidoHpc.Skills.SlurmSkill,
+      JidoHpc.Skills.ShellSkill,
+      JidoHpc.Skills.GitSkill
     ],
     system_prompt: """
     You are the jido_hpc coding agent, running on an HPC login node.
