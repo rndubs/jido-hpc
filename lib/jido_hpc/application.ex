@@ -6,6 +6,7 @@ defmodule JidoHpc.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      JidoHpc.Safety.RateLimiter,
       JidoHpc.Jido
     ]
 
