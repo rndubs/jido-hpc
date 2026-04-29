@@ -19,7 +19,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [x] Toolchain installed: **Erlang/OTP 25.3 (apt) + Elixir 1.18.4 (precompiled, `elixir-otp-25.zip`) + Hex 2.4.1 (built from github source)**. Replication script at `bin/setup.sh`.
 - [x] `mix format --check-formatted` ✓ verified.
 - [x] All `.ex`/`.exs` files parse cleanly (validated with `Code.string_to_quoted!`).
-- [-] `mix compile` and `mix test` blocked in this sandbox: `repo.hex.pm` denied by firewall, so `mix deps.get` cannot fetch tarballs. NOT a tooling issue — runs fine on any host with unrestricted network. (Tip: behind a TLS-intercepting proxy, set `HEX_UNSAFE_HTTPS=1`.)
+- [-] `mix compile` and `mix test` blocked in this sandbox: `repo.hex.pm` denied by firewall, so `mix deps.get` cannot fetch tarballs. NOT a tooling issue — runs fine on any host with unrestricted network. (Tip: behind a TLS-intercepting proxy, set `HEX_UNSAFE_HTTPS=1`.) Phase 2 was likewise written without local compilation; once deps are installed run `mix format --check-formatted && mix compile --warnings-as-errors && mix test`.
 
 ### Phase 1 — Login-node primitives
 - [x] `JidoHpc.Safety.PathGuard` (allowlist roots, reject `..` escapes)
@@ -34,21 +34,21 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [ ] Manual smoke: agent edits a file via tool calls (deferred — needs live LLM + working `mix deps.get`; Phase 1 code is in place for it)
 
 ### Phase 2 — Slurm integration
-- [ ] `JidoHpc.Slurm.CLI` wrapper around `sbatch / squeue / sacct / scancel / sinfo / scontrol`
-- [ ] `--json` parsing with `--parsable2 --format=…` fallback
-- [ ] Opportunistic `slurmrestd` path when `SLURM_JWT` + `SLURMRESTD_URL` are set
-- [ ] `JidoHpc.Slurm.JobSpec` typed struct (`name, time, nodes, ntasks, cpus, mem, gpus, partition, modules, env, command`)
-- [ ] `JidoHpc.Slurm.Script.render/1` — turns `JobSpec` into a sbatch script (LLM never writes raw `#SBATCH`)
-- [ ] `JidoHpc.Slurm.Job` state struct + state machine (`PENDING → RUNNING → COMPLETED|FAILED|TIMEOUT|OOM|CANCELLED|NODE_FAIL|PREEMPTED`)
-- [ ] `JidoHpc.Actions.Slurm.Submit`
-- [ ] `JidoHpc.Actions.Slurm.Cancel`
-- [ ] `JidoHpc.Actions.Slurm.Status`
-- [ ] `JidoHpc.Actions.Slurm.Sacct`
-- [ ] `JidoHpc.Actions.Slurm.Sinfo`
-- [ ] `JidoHpc.Actions.Slurm.TemplateScript`
-- [ ] `JidoHpc.Actions.Slurm.WaitForJob`
-- [ ] `JidoHpc.Sensors.SlurmJobSensor` polls `squeue --json` and emits `Jido.Signal`s on state change
-- [ ] Tests use a stubbed `Slurm.CLI` (fake JSON outputs) — no real cluster needed in CI
+- [x] `JidoHpc.Slurm.CLI` wrapper around `sbatch / squeue / sacct / scancel / sinfo / scontrol` (behaviour + `Real` impl; `impl()` swappable via `Application.get_env(:jido_hpc, :slurm_cli)`)
+- [x] `--json` parsing with `--parsable2 --format=…` fallback (and `scontrol` key=value fallback)
+- [-] Opportunistic `slurmrestd` path when `SLURM_JWT` + `SLURMRESTD_URL` are set — deferred; CLI behaviour leaves a clean seam for a `JidoHpc.Slurm.CLI.Restd` impl in a later phase
+- [x] `JidoHpc.Slurm.JobSpec` typed struct + validating `new/1`
+- [x] `JidoHpc.Slurm.Script.render/1` — turns `JobSpec` into a sbatch script (single-quote bash quoting, no ambient env leakage)
+- [x] `JidoHpc.Slurm.Job` state struct + state machine (`PENDING → RUNNING → COMPLETED|FAILED|TIMEOUT|OOM|CANCELLED|NODE_FAIL|PREEMPTED`, plus `:unknown`)
+- [x] `JidoHpc.Actions.Slurm.Submit` — honors `:confirm_on_submit` vs `:autonomous` (plus per-call `confirm:` / `autonomy:` overrides)
+- [x] `JidoHpc.Actions.Slurm.Cancel` (rejects non-numeric job ids before reaching the CLI)
+- [x] `JidoHpc.Actions.Slurm.Status`
+- [x] `JidoHpc.Actions.Slurm.Sacct`
+- [x] `JidoHpc.Actions.Slurm.Sinfo`
+- [x] `JidoHpc.Actions.Slurm.TemplateScript`
+- [x] `JidoHpc.Actions.Slurm.WaitForJob` (squeue → sacct fallback when job leaves the queue)
+- [x] `JidoHpc.Sensors.SlurmJobSensor` polls `Slurm.CLI.squeue/1`, dispatches `slurm.job.<state>` / `slurm.job.transition` signals, untracks terminal jobs
+- [x] Tests use a stubbed `Slurm.CLI` (`JidoHpc.Test.SlurmCLIStub`, ETS-backed FIFO queue keyed by owner pid) — no real cluster needed in CI
 
 ### Phase 3 — Skills wiring
 - [ ] `JidoHpc.Skills.SlurmSkill` (`use Jido.Plugin`) bundles all `Slurm.*` actions
