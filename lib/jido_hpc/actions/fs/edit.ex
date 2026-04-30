@@ -25,7 +25,7 @@ defmodule JidoHpc.Actions.FS.Edit do
   alias JidoHpc.Safety.PathGuard
 
   @impl true
-  def run(params, _context) do
+  def run(params, ctx) do
     %{
       path: path,
       old_string: old,
@@ -41,7 +41,7 @@ defmodule JidoHpc.Actions.FS.Edit do
         {:error, {:invalid_edit, :no_op}}
 
       true ->
-        with {:ok, abs} <- PathGuard.validate(path),
+        with {:ok, abs} <- PathGuard.validate(path, ctx),
              {:ok, content} <- File.read(abs),
              {:ok, updated, count} <- apply_edit(content, old, new, replace_all),
              :ok <- File.write(abs, updated) do

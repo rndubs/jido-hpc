@@ -18,11 +18,19 @@ defmodule JidoHpc.Safety.PathGuard do
   layer their own check on top.
   """
 
-  @type validation_opts :: [roots: [String.t()]]
+  @type validation_opts :: [roots: [String.t()]] | map()
 
   @doc """
   Validate `path` against the allowlist. Returns `{:ok, abs_path}` (where
   `abs_path` is the expanded, absolute form) or `{:error, reason}`.
+
+  The second argument can be either a keyword list of opts (`roots:` for
+  test overrides) or an action `ctx` map. When given a ctx, the guard
+  reads roots from `ctx[:state][:shell][:path_allowlist]` (preferred,
+  populated by `ShellSkill.mount/2`) or `ctx[:state][:slurm][:path_allowlist]`
+  / `ctx[:state][:git][:path_allowlist]`, falling back to
+  `Application.get_env(:jido_hpc, :path_allowlist)` when no plugin state
+  is present (e.g. for non-agent callers).
   """
   @spec validate(term(), validation_opts()) :: {:ok, String.t()} | {:error, term()}
   def validate(path, opts \\ [])
@@ -69,13 +77,39 @@ defmodule JidoHpc.Safety.PathGuard do
 
   @doc """
   Returns the configured allowlist roots, expanded to absolute paths.
+
+  Accepts either a keyword opts list (`roots:` override) or an action ctx
+  map (reads from plugin state). Empty / missing config falls back to
+  `Application.get_env(:jido_hpc, :path_allowlist)`.
   """
   @spec roots(validation_opts()) :: [String.t()]
-  def roots(opts \\ []) do
+  def roots(opts \\ [])
+
+  def roots(opts) when is_list(opts) do
     raw =
       Keyword.get(opts, :roots) ||
         Application.get_env(:jido_hpc, :path_allowlist, [])
 
+    expand_roots(raw)
+  end
+
+  def roots(ctx) when is_map(ctx) do
+    raw = roots_from_ctx(ctx) || Application.get_env(:jido_hpc, :path_allowlist, [])
+    expand_roots(raw)
+  end
+
+  defp roots_from_ctx(ctx) do
+    state = Map.get(ctx, :state) || %{}
+
+    Enum.find_value([:shell, :slurm, :git], fn key ->
+      case Map.get(state, key) do
+        %{path_allowlist: roots} when is_list(roots) and roots != [] -> roots
+        _ -> nil
+      end
+    end)
+  end
+
+  defp expand_roots(raw) do
     raw
     |> List.wrap()
     |> Enum.reject(&(&1 in [nil, ""]))

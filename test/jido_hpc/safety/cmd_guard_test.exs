@@ -97,4 +97,26 @@ defmodule JidoHpc.Safety.CmdGuardTest do
       assert CmdGuard.allowlist(allowlist: ["foo"]) == ["foo"]
     end
   end
+
+  describe "ctx-aware lookup (Phase 4.6)" do
+    test "validate/3 reads allowlist from ctx[:state][:shell][:cmd_allowlist]" do
+      ctx = %{state: %{shell: %{cmd_allowlist: ["only_this"]}}}
+      assert {:ok, _} = CmdGuard.validate("only_this", ["arg"], ctx)
+      assert {:error, {:not_allowlisted, "ls"}} = CmdGuard.validate("ls", [], ctx)
+    end
+
+    test "validate/3 with empty ctx falls back to Application env" do
+      prev = Application.get_env(:jido_hpc, :cmd_allowlist)
+      Application.put_env(:jido_hpc, :cmd_allowlist, ["env_only"])
+      on_exit(fn -> Application.put_env(:jido_hpc, :cmd_allowlist, prev || []) end)
+
+      assert {:ok, _} = CmdGuard.validate("env_only", [], %{})
+      assert {:error, {:not_allowlisted, _}} = CmdGuard.validate("ls", [], %{})
+    end
+
+    test "allowlist/1 with ctx returns plugin-state list when present" do
+      ctx = %{state: %{shell: %{cmd_allowlist: ["a", "b"]}}}
+      assert CmdGuard.allowlist(ctx) == ["a", "b"]
+    end
+  end
 end

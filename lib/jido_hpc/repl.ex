@@ -129,7 +129,10 @@ defmodule JidoHpc.REPL do
       autonomy: state.autonomy
     }
 
-    case state.dispatcher.ask_stream(state.agent, prompt, ctx: ctx) do
+    # Pass via `tool_context:` so jido_ai merges this into every action's
+    # `ctx` for the duration of the request. `Slurm.Submit` reads
+    # `ctx.autonomy` first; `AuditLog` reads `:session_id` / `:prompt_hash`.
+    case state.dispatcher.ask_stream(state.agent, prompt, tool_context: ctx) do
       {:ok, %{request: request, events: events}} ->
         Enum.each(events, &render_event(state, &1))
 

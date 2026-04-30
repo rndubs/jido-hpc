@@ -26,10 +26,10 @@ defmodule JidoHpc.Actions.Git.Log do
   @format "%H\x1f%an\x1f%ae\x1f%aI\x1f%s"
 
   @impl true
-  def run(%{cwd: cwd, limit: limit, rev: rev, paths: paths}, _context) do
-    with {:ok, abs} <- PathGuard.validate(cwd),
+  def run(%{cwd: cwd, limit: limit, rev: rev, paths: paths}, ctx) do
+    with {:ok, abs} <- PathGuard.validate(cwd, ctx),
          {:ok, args} <- build_args(limit, rev, paths),
-         {:ok, {cmd, args}} <- CmdGuard.validate("git", args),
+         {:ok, {cmd, args}} <- CmdGuard.validate("git", args, ctx),
          {:ok, {output, status}} <- run_cmd(cmd, args, abs) do
       {:ok,
        %{

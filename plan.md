@@ -86,6 +86,104 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` skipped/de
 - [x] **Deleted `bin/lint/jido_stubs.ex` and `bin/lint/lint.exs`.** Real deps now compile + test green on this machine (Elixir 1.18.4 / OTP 25.3, `mix deps.get` works), so `mix compile --warnings-as-errors` is authoritative and the hand-written stubs were retired.
 - [x] `mix format --check-formatted && mix compile --warnings-as-errors && mix test` runs green against the real deps (verified at commit `ef5fddd`).
 
+### Phase 4.6 — Review follow-ups (framework alignment)
+
+Triggered by a cross-read of our `CodingAgent` against `Jido.AI.Agent` / `Jido.AI.Plugins.Chat`. The core architecture matched the framework idiom; these are tunings.
+
+- [x] **CodingAgent: explicit `model:`** — the macro default is `:fast`, which under-serves a coding agent. Set `model: :capable`.
+- [x] **CodingAgent: `tool_timeout_ms: 60_000`** — `sacct` on a busy cluster, `sbatch` round-trips, and `WaitForJob` will all blow past the 15s default.
+- [x] **CodingAgent: explicit `request_policy: :reject` + `max_iterations: 20`** — rely on defaults less; document our autonomy-vs-concurrency stance at the call site.
+- [x] **CodingAgent: `effect_policy` set** — bounded emitted effects to `Jido.Agent.StateOp.SetState` + `Jido.Agent.Directive.Emit`; `strategy_effect_policy` constrains emit prefixes to `slurm.*` / `jido_hpc.*`.
+- [x] **CodingAgent: `tool_context` for `autonomy`** — `tool_context: %{autonomy: :confirm_on_submit}` is the literal compile-time default; the REPL overrides per-request via `MyAgent.ask(pid, prompt, tool_context: %{autonomy: state.autonomy, session_id: …, prompt_hash: …})`. `Slurm.Submit.effective_autonomy/2` reads `params.autonomy` first, then `ctx.autonomy`, then `Application.get_env(:jido_hpc, :autonomy)`.
+- [x] **Skills: implement `mount/2` and `schema/0`** — `ShellSkill.mount/2` snapshots `path_allowlist` + `cmd_allowlist` into `agent.state.shell`; `SlurmSkill.mount/2` snapshots `path_allowlist` + `sensor_name`; `GitSkill.mount/2` snapshots `path_allowlist`. Each skill exposes a Zoi `schema/0` describing its config shape. Both map and keyword config are accepted.
+- [x] **Safety guards read from ctx first** — `PathGuard.validate(path, ctx)` and `CmdGuard.validate(cmd, args, ctx)` accept either keyword opts (back-compat) or an action ctx map. With a map, they look up `ctx[:state][:shell][:path_allowlist]` / `ctx[:state][:slurm][:path_allowlist]` / `ctx[:state][:git][:path_allowlist]` for paths and `ctx[:state][:shell][:cmd_allowlist]` for commands. Empty / missing → fall back to Application env. All 12 actions that touched `PathGuard`/`CmdGuard` now thread `ctx` through.
+- [x] **`Slurm.Submit` registers job_id with `SlurmJobSensor`** — after a successful sbatch, calls `SlurmJobSensor.track(sensor_name, job_id)`. Sensor name is read from `ctx[:state][:slurm][:sensor_name]` (set by `SlurmSkill.mount/2`) with a default of `JidoHpc.Sensors.SlurmJobSensor`. A missing/dead sensor is treated as no-op (e.g. tests that run Submit without booting an agent).
+- [x] **System prompt: list all 17 actions by category** — replaced the partial-enumeration intro with a complete category listing so the model isn't biased toward only the actions named earlier.
+- [x] Regression tests added (14 new): ctx-aware `PathGuard.validate/2` (4), ctx-aware `CmdGuard.validate/3` + `allowlist/1` (3), `mount/2` for all three skills + `schema/0` smoke (6), `Slurm.Submit` registers with sensor on success (1). Full suite: **215 tests, 0 failures**.
+
+### Phase 4.7 — Extending for specialized agents
+
+`CodingAgent` is the generalist. Specialized agents (e.g. `TrainingJobAgent`, `AnalysisAgent`, `TriageAgent`) inherit the same framework with three composition surfaces.
+
+#### Recipe — narrow a generalist into a specialist
+
+```elixir
+defmodule JidoHpc.Agents.TrainingJobAgent do
+  use Jido.AI.Agent,
+    name: "jido_hpc_training_agent",
+    description: "Specialized for ML training jobs: GPU partitions, multi-node DDP, checkpointing.",
+    # 1. Model: heavier reasoning for capacity planning + hyperparameter tradeoffs.
+    model: :reasoning,
+    # 2. Skills: same base + a domain-specific one.
+    plugins: [
+      JidoHpc.Skills.SlurmSkill,
+      JidoHpc.Skills.ShellSkill,
+      JidoHpc.Skills.GitSkill,
+      JidoHpc.Skills.TrainingSkill        # Lmod, dataset stage-in, checkpoint mgmt
+    ],
+    # 3. Tools: union of the four skills' actions (regression test enforces).
+    tools: [
+      # ... (per the Phase 4.6 mount/2 plumbing, this can shrink to skill-derived)
+    ],
+    # 4. Effect policy: narrower than CodingAgent.
+    effect_policy: %{mode: :allow_list, allow: [Jido.Agent.StateOp.SetState, Jido.Agent.Directive.Emit]},
+    strategy_effect_policy: %{constraints: %{emit: %{allowed_signal_prefixes: ["slurm.", "training."]}}},
+    # 5. Tool context: domain-specific defaults the LLM gets for free.
+    tool_context: %{
+      autonomy: :confirm_on_submit,
+      default_partition: "gpu",
+      default_walltime: "24:00:00",
+      checkpoint_root: "/scratch/$USER/ckpt"
+    },
+    # 6. System prompt: domain rules the generalist doesn't have.
+    system_prompt: """
+    You are a training-job agent. In addition to the generalist rules:
+      * Always use a GPU partition; reject CPU-only requests.
+      * Cap walltime at 24h unless the user explicitly overrides.
+      * Stage datasets to $SCRATCH before training; never read from $HOME at scale.
+      * Emit a checkpoint plan before submission; require confirm: true to submit.
+    """
+end
+```
+
+#### Composition axes (when to reach for which surface)
+
+| Goal | Surface | Example |
+| --- | --- | --- |
+| New domain capability (Lmod, quota, data movers) | **New `Skill` (`use Jido.Plugin`)** | `JidoHpc.Skills.TrainingSkill` bundles `Modules.Load`, `Quota.CheckDisk`, `Stage.In`, `Stage.Out` |
+| New atomic operation (one tool call) | **New `Action` (`use Jido.Action`)** | `JidoHpc.Actions.Modules.Spider` |
+| Domain-specific reasoning loop | **New strategy** (rare; prefer ReAct + tools) | A "submit → wait → analyze logs → resubmit on OOM" loop as a custom `Jido.AI.Reasoning.*.Strategy` |
+| Domain guardrails on existing tools | **`tool_context` + system prompt** | `tool_context: %{default_partition: "gpu"}`; prompt enforces "use only the gpu partition" |
+| Domain blast-radius bound | **`effect_policy` + `strategy_effect_policy`** | restrict signal prefixes to `training.*` |
+| Domain memory/RAG | **`Jido.AI.Plugins.Retrieval`** | mount with a per-domain `namespace:` so memories don't leak across agents |
+
+#### Conventions for new skills
+
+A specialist skill is just a `Jido.Plugin` that follows the conventions already established for `SlurmSkill` / `ShellSkill` / `GitSkill`:
+
+- One module per **capability** (not per action). `TrainingSkill` is one module bundling 4-6 training actions; don't make a `DatasetStageInSkill`.
+- `name:` snake_case, `state_key:` matches the conceptual name (`:training`, not `:training_skill`).
+- Implement `mount/2` to read configuration from agent config (or runtime env) into `agent.state.<state_key>`.
+- Implement `schema/0` describing the mount config shape (Zoi).
+- Implement `child_spec/1` only when the skill owns a long-lived process (sensor / connection pool / cache).
+- Declare `signal_routes:` for asynchronous events the skill emits (terminal job states, new file arrivals, etc).
+- Actions belonging to the skill follow the same `JidoHpc.Actions.<Domain>.<Verb>` naming.
+
+#### Conventions for narrowing vs broadening
+
+Two specialization patterns that come up:
+
+- **Narrowing** — strip a skill out (`AnalysisAgent` drops `ShellSkill` for read-only auditing) or restrict via `allowed_tools: [...]` on `ask/3` for per-request scopes.
+- **Broadening** — add a skill or hand-list extra actions. The same regression test pattern (`agent.actions/0 == union(skill.actions/0)`) keeps the literal `tools:` list honest.
+
+Tighter `effect_policy` stacks: an agent can narrow what its parent policy already permits, but never broaden it (`Jido.AI.Agent` enforces this).
+
+#### What NOT to do
+
+- Don't subclass `CodingAgent`. The `Jido.AI.Agent` macro produces a finished module; treat it as a recipe target, not a base class.
+- Don't redefine the framework plugins (`Jido.AI.Plugins.TaskSupervisor`, `ModelRouting`, `Policy`) — those are mounted automatically; a duplicate-instance error is the symptom.
+- Don't paste the same `tools:` list into every specialist. Define it once on a `Skill`, derive the list, keep one regression test.
+
 ### Phase 5 — Quality of life
 - [ ] Lmod actions: `Modules.{Load, List, Spider}`
 - [ ] Quota actions: `Quota.{CheckDisk, CheckInode}`

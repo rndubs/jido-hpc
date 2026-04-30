@@ -21,12 +21,12 @@ defmodule JidoHpc.Actions.Git.Diff do
   alias JidoHpc.Safety.{CmdGuard, PathGuard, RateLimiter}
 
   @impl true
-  def run(params, _context) do
+  def run(params, ctx) do
     %{cwd: cwd, rev: rev, staged?: staged?, paths: paths, max_bytes: max_bytes} = params
 
-    with {:ok, abs} <- PathGuard.validate(cwd),
+    with {:ok, abs} <- PathGuard.validate(cwd, ctx),
          {:ok, args} <- build_args(rev, staged?, paths),
-         {:ok, {cmd, args}} <- CmdGuard.validate("git", args),
+         {:ok, {cmd, args}} <- CmdGuard.validate("git", args, ctx),
          {:ok, {output, status}} <- run_cmd(cmd, args, abs) do
       {truncated, body} = truncate(output, max_bytes)
 

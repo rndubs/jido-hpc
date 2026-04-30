@@ -35,10 +35,10 @@ defmodule JidoHpc.Actions.FS.Grep do
   alias JidoHpc.Safety.PathGuard
 
   @impl true
-  def run(params, _context) do
+  def run(params, ctx) do
     %{pattern: pattern, path: path, glob: glob} = params
 
-    with {:ok, root} <- PathGuard.validate(path),
+    with {:ok, root} <- PathGuard.validate(path, ctx),
          {:ok, regex} <- compile(pattern, params.case_insensitive) do
       files =
         root

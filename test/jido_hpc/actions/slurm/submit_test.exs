@@ -109,6 +109,33 @@ defmodule JidoHpc.Actions.Slurm.SubmitTest do
     assert {:error, {:sbatch_failed, _}} = Submit.run(base(root), %{})
   end
 
+  test "registers a successful submission with the SlurmJobSensor (Phase 4.6)", %{root: root} do
+    Application.put_env(:jido_hpc, :autonomy, :autonomous)
+
+    SlurmCLIStub.expect(:sbatch, fn _path, _spec ->
+      {:ok, %{job_id: "424242", stdout: ""}}
+    end)
+
+    # Boot a sensor under a one-off name so we don't collide with any
+    # globally-running JidoHpc.Sensors.SlurmJobSensor (e.g. from another
+    # test that booted CodingAgent). Submit picks the name up from
+    # ctx[:state][:slurm][:sensor_name].
+    sensor_name = :"submit_test_sensor_#{:erlang.unique_integer([:positive])}"
+
+    {:ok, sensor_pid} =
+      JidoHpc.Sensors.SlurmJobSensor.start_link(name: sensor_name, poll_interval_ms: 86_400_000)
+
+    on_exit(fn -> if Process.alive?(sensor_pid), do: GenServer.stop(sensor_pid) end)
+
+    ctx = %{state: %{slurm: %{sensor_name: sensor_name}}}
+
+    assert {:ok, %{job_id: "424242"}} = Submit.run(base(root), ctx)
+
+    # cast/track is async — give the cast a moment to process.
+    tracked = JidoHpc.Sensors.SlurmJobSensor.tracked(sensor_name)
+    assert Map.has_key?(tracked, "424242")
+  end
+
   test "writes an audit-log entry on submission", %{root: root} do
     Application.put_env(:jido_hpc, :autonomy, :autonomous)
 

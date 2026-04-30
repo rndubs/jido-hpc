@@ -18,8 +18,8 @@ defmodule JidoHpc.Actions.FS.Ls do
   alias JidoHpc.Safety.PathGuard
 
   @impl true
-  def run(%{path: path, include_hidden?: include_hidden?}, _context) do
-    with {:ok, abs} <- PathGuard.validate(path),
+  def run(%{path: path, include_hidden?: include_hidden?}, ctx) do
+    with {:ok, abs} <- PathGuard.validate(path, ctx),
          {:ok, names} <- File.ls(abs) do
       entries =
         names

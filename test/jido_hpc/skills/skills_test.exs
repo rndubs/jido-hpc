@@ -77,6 +77,62 @@ defmodule JidoHpc.SkillsTest do
     end
   end
 
+  describe "mount/2 (Phase 4.6)" do
+    test "ShellSkill.mount/2 snapshots both allowlists from explicit config" do
+      config = %{path_allowlist: ["/tmp/a"], cmd_allowlist: ["ls"]}
+
+      assert {:ok, %{path_allowlist: ["/tmp/a"], cmd_allowlist: ["ls"]}} =
+               JidoHpc.Skills.ShellSkill.mount(%{}, config)
+    end
+
+    test "ShellSkill.mount/2 falls back to Application env when config keys are missing" do
+      prev_path = Application.get_env(:jido_hpc, :path_allowlist)
+      prev_cmd = Application.get_env(:jido_hpc, :cmd_allowlist)
+      Application.put_env(:jido_hpc, :path_allowlist, ["/env/path"])
+      Application.put_env(:jido_hpc, :cmd_allowlist, ["env_cmd"])
+
+      on_exit(fn ->
+        Application.put_env(:jido_hpc, :path_allowlist, prev_path || [])
+        Application.put_env(:jido_hpc, :cmd_allowlist, prev_cmd || [])
+      end)
+
+      assert {:ok, %{path_allowlist: ["/env/path"], cmd_allowlist: ["env_cmd"]}} =
+               JidoHpc.Skills.ShellSkill.mount(%{}, %{})
+    end
+
+    test "GitSkill.mount/2 snapshots path_allowlist" do
+      assert {:ok, %{path_allowlist: ["/repos"]}} =
+               JidoHpc.Skills.GitSkill.mount(%{}, %{path_allowlist: ["/repos"]})
+    end
+
+    test "SlurmSkill.mount/2 snapshots path_allowlist + sensor_name default" do
+      assert {:ok, %{path_allowlist: ["/scratch"], sensor_name: name}} =
+               JidoHpc.Skills.SlurmSkill.mount(%{}, %{path_allowlist: ["/scratch"]})
+
+      assert name == JidoHpc.Sensors.SlurmJobSensor
+    end
+
+    test "SlurmSkill.mount/2 lets a deployment override the sensor name" do
+      assert {:ok, %{sensor_name: :my_sensor}} =
+               JidoHpc.Skills.SlurmSkill.mount(%{}, %{
+                 path_allowlist: [],
+                 sensor_name: :my_sensor
+               })
+    end
+
+    test "every skill exposes a Zoi schema/0" do
+      for skill <- [
+            JidoHpc.Skills.ShellSkill,
+            JidoHpc.Skills.GitSkill,
+            JidoHpc.Skills.SlurmSkill
+          ] do
+        Code.ensure_loaded(skill)
+        assert function_exported?(skill, :schema, 0), "#{inspect(skill)} missing schema/0"
+        assert skill.schema()
+      end
+    end
+  end
+
   test "CodingAgent's hand-listed tools match the union of skill actions" do
     # The Jido.AI.Agent macro requires `tools:` as a literal list at
     # the call site (it can't evaluate function calls or module

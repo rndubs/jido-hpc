@@ -19,7 +19,7 @@ defmodule JidoHpc.Safety.CmdGuard do
   This module never spawns a process — it only inspects the request.
   """
 
-  @type validation_opts :: [allowlist: [String.t()]]
+  @type validation_opts :: [allowlist: [String.t()]] | map()
 
   # Characters that should never appear in a command name. A binary that
   # contains any of these almost certainly indicates an attempt to smuggle
@@ -63,14 +63,33 @@ defmodule JidoHpc.Safety.CmdGuard do
 
   @doc """
   Returns the configured command allowlist.
+
+  Accepts either a keyword opts list (`allowlist:` override for tests) or
+  an action ctx map. With a ctx, the guard reads
+  `ctx[:state][:shell][:cmd_allowlist]` (populated by `ShellSkill.mount/2`)
+  before falling back to `Application.get_env(:jido_hpc, :cmd_allowlist)`.
   """
   @spec allowlist(validation_opts()) :: [String.t()]
-  def allowlist(opts \\ []) do
+  def allowlist(opts \\ [])
+
+  def allowlist(opts) when is_list(opts) do
     raw =
       Keyword.get(opts, :allowlist) ||
         Application.get_env(:jido_hpc, :cmd_allowlist, [])
 
     raw |> List.wrap() |> Enum.map(&to_string/1)
+  end
+
+  def allowlist(ctx) when is_map(ctx) do
+    raw = allowlist_from_ctx(ctx) || Application.get_env(:jido_hpc, :cmd_allowlist, [])
+    raw |> List.wrap() |> Enum.map(&to_string/1)
+  end
+
+  defp allowlist_from_ctx(ctx) do
+    case get_in(ctx, [:state, :shell, :cmd_allowlist]) do
+      list when is_list(list) and list != [] -> list
+      _ -> nil
+    end
   end
 
   defp check_cmd_clean(""), do: {:error, {:invalid_cmd, :empty}}

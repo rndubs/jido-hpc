@@ -89,6 +89,57 @@ defmodule JidoHpc.Skills.SlurmSkill do
     )
   end
 
+  @doc """
+  Snapshot the `path_allowlist` (used by `Slurm.TemplateScript` to validate
+  absolute output/error paths) and the sensor name into `agent.state.slurm`
+  so actions can read them from `ctx[:state][:slurm]`.
+
+  Same fallback rules as `ShellSkill.mount/2`: explicit config wins, then
+  `Application.get_env(:jido_hpc, :path_allowlist)`. The `:sensor_name`
+  key lets a deployment override the registered sensor name (defaults to
+  `JidoHpc.Sensors.SlurmJobSensor`); `Slurm.Submit` reads it back from ctx
+  to register newly submitted jobs with the right tracker.
+  """
+  @impl Jido.Plugin
+  def mount(_agent, config) do
+    {:ok,
+     %{
+       path_allowlist: fetch_path_allowlist(config),
+       sensor_name: fetch_sensor_name(config)
+     }}
+  end
+
+  @doc "Zoi schema describing the skill's mount config."
+  def schema do
+    Zoi.object(%{
+      path_allowlist:
+        Zoi.list(Zoi.string(description: "Allowlisted root for log paths"),
+          description: "Roots Slurm.TemplateScript validates absolute output/error against"
+        )
+        |> Zoi.default([]),
+      sensor:
+        Zoi.any(description: "Opts forwarded to SlurmJobSensor.start_link/1")
+        |> Zoi.optional(),
+      sensor_name:
+        Zoi.any(description: "Registered name for the sensor (defaults to module name)")
+        |> Zoi.optional()
+    })
+  end
+
   defp fetch_sensor_opts(config) when is_map(config), do: Map.get(config, :sensor, [])
   defp fetch_sensor_opts(config) when is_list(config), do: Keyword.get(config, :sensor, [])
+
+  defp fetch_sensor_name(config) when is_map(config),
+    do: Map.get(config, :sensor_name, SlurmJobSensor)
+
+  defp fetch_sensor_name(config) when is_list(config),
+    do: Keyword.get(config, :sensor_name, SlurmJobSensor)
+
+  defp fetch_path_allowlist(config) when is_map(config) do
+    Map.get(config, :path_allowlist) || Application.get_env(:jido_hpc, :path_allowlist, [])
+  end
+
+  defp fetch_path_allowlist(config) when is_list(config) do
+    Keyword.get(config, :path_allowlist) || Application.get_env(:jido_hpc, :path_allowlist, [])
+  end
 end

@@ -21,13 +21,13 @@ defmodule JidoHpc.Actions.FS.Glob do
   alias JidoHpc.Safety.PathGuard
 
   @impl true
-  def run(%{root: root, pattern: pattern, max_results: max}, _context) do
-    with {:ok, abs_root} <- PathGuard.validate(root) do
+  def run(%{root: root, pattern: pattern, max_results: max}, ctx) do
+    with {:ok, abs_root} <- PathGuard.validate(root, ctx) do
       paths =
         abs_root
         |> Path.join(pattern)
         |> Path.wildcard()
-        |> Enum.filter(fn p -> match?({:ok, _}, PathGuard.validate(p)) end)
+        |> Enum.filter(fn p -> match?({:ok, _}, PathGuard.validate(p, ctx)) end)
         |> Enum.take(max + 1)
 
       {results, truncated?} =

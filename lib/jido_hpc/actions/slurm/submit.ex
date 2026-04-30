@@ -69,6 +69,7 @@ defmodule JidoHpc.Actions.Slurm.Submit do
 
   alias JidoHpc.Actions.Slurm.TemplateScript
   alias JidoHpc.AuditLog
+  alias JidoHpc.Sensors.SlurmJobSensor
   alias JidoHpc.Slurm.CLI
 
   @impl true
@@ -87,7 +88,7 @@ defmodule JidoHpc.Actions.Slurm.Submit do
       Map.get(params, :prompt_hash) || Map.get(ctx, :prompt_hash)
 
     template_params = Map.drop(params, [:confirm, :autonomy, :session_id, :prompt_hash])
-    autonomy = effective_autonomy(params)
+    autonomy = effective_autonomy(params, ctx)
 
     with {:ok, %{spec: spec, script: script, workdir: workdir}} <-
            TemplateScript.run(template_params, ctx),
@@ -97,6 +98,18 @@ defmodule JidoHpc.Actions.Slurm.Submit do
       audit(session_id, prompt_hash, autonomy, script_path, result)
 
       case result do
+        {:ok, %{submitted: true, job_id: id} = ok_map} ->
+          register_with_sensor(id, ctx)
+
+          {:ok,
+           Map.merge(ok_map, %{
+             spec: spec,
+             script: script,
+             script_path: script_path,
+             autonomy: autonomy,
+             session_id: session_id
+           })}
+
         {:ok, ok_map} ->
           {:ok,
            Map.merge(ok_map, %{
@@ -113,10 +126,24 @@ defmodule JidoHpc.Actions.Slurm.Submit do
     end
   end
 
-  defp effective_autonomy(%{autonomy: a}) when a in [:confirm_on_submit, :autonomous], do: a
+  # Per-call params win, then per-request ctx (set via the agent's
+  # tool_context or ask/3's :tool_context override), then process-wide
+  # Application env. The Application fallback keeps non-agent callers
+  # (Mix tasks, bare `Jido.Exec.run/2`) working.
+  defp effective_autonomy(params, ctx) do
+    case Map.get(params, :autonomy) do
+      a when a in [:confirm_on_submit, :autonomous] ->
+        a
 
-  defp effective_autonomy(_) do
-    Application.get_env(:jido_hpc, :autonomy, :confirm_on_submit)
+      _ ->
+        case Map.get(ctx, :autonomy) do
+          a when a in [:confirm_on_submit, :autonomous] ->
+            a
+
+          _ ->
+            Application.get_env(:jido_hpc, :autonomy, :confirm_on_submit)
+        end
+    end
   end
 
   defp do_submit(_path, _spec, :confirm_on_submit, false) do
@@ -132,6 +159,25 @@ defmodule JidoHpc.Actions.Slurm.Submit do
         {:error, {:sbatch_failed, reason}}
     end
   end
+
+  # Hand the new job_id to the SlurmJobSensor so its async polling
+  # picks up state transitions and emits `slurm.job.<state>` signals.
+  # Sensor name is read from the SlurmSkill's mounted state (preferred)
+  # or falls back to the default registered name; a missing sensor is
+  # not an error (e.g. tests may run Submit without booting the agent).
+  defp register_with_sensor(job_id, ctx) when is_binary(job_id) do
+    name = get_in(ctx, [:state, :slurm, :sensor_name]) || SlurmJobSensor
+
+    if is_atom(name) and Process.whereis(name) do
+      SlurmJobSensor.track(name, job_id)
+    end
+
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  defp register_with_sensor(_, _ctx), do: :ok
 
   defp audit(session_id, prompt_hash, autonomy, script_path, result) do
     {submitted, job_id, error} =

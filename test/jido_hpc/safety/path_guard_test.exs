@@ -107,4 +107,32 @@ defmodule JidoHpc.Safety.PathGuardTest do
       assert PathGuard.roots(roots: ["", "/tmp"]) == ["/tmp"]
     end
   end
+
+  describe "ctx-aware lookup (Phase 4.6)" do
+    test "validate/2 reads roots from ctx[:state][:shell][:path_allowlist]", %{root: root} do
+      child = Path.join(root, "ok.txt")
+      ctx = %{state: %{shell: %{path_allowlist: [root]}}}
+      assert {:ok, ^child} = PathGuard.validate(child, ctx)
+    end
+
+    test "validate/2 falls back to slurm/git plugin state if shell is absent", %{root: root} do
+      child = Path.join(root, "ok.txt")
+      ctx = %{state: %{slurm: %{path_allowlist: [root]}}}
+      assert {:ok, ^child} = PathGuard.validate(child, ctx)
+    end
+
+    test "validate/2 with empty ctx falls back to Application env", %{root: root} do
+      prev = Application.get_env(:jido_hpc, :path_allowlist)
+      Application.put_env(:jido_hpc, :path_allowlist, [root])
+      on_exit(fn -> Application.put_env(:jido_hpc, :path_allowlist, prev || []) end)
+
+      child = Path.join(root, "ok.txt")
+      assert {:ok, ^child} = PathGuard.validate(child, %{})
+    end
+
+    test "validate/2 with ctx-supplied allowlist still rejects escapes", %{root: root} do
+      ctx = %{state: %{shell: %{path_allowlist: [root]}}}
+      assert {:error, {:outside_allowlist, _}} = PathGuard.validate("/etc/passwd", ctx)
+    end
+  end
 end

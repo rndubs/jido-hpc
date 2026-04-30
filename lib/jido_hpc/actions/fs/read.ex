@@ -27,8 +27,8 @@ defmodule JidoHpc.Actions.FS.Read do
   alias JidoHpc.Safety.PathGuard
 
   @impl true
-  def run(%{path: path, max_bytes: max_bytes, offset: offset}, _context) do
-    with {:ok, abs} <- PathGuard.validate(path),
+  def run(%{path: path, max_bytes: max_bytes, offset: offset}, ctx) do
+    with {:ok, abs} <- PathGuard.validate(path, ctx),
          {:ok, %File.Stat{size: total_size}} <- File.stat(abs),
          {:ok, fd} <- File.open(abs, [:read, :binary]) do
       try do

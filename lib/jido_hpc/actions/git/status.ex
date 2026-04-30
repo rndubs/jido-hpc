@@ -16,10 +16,10 @@ defmodule JidoHpc.Actions.Git.Status do
   alias JidoHpc.Safety.{CmdGuard, PathGuard, RateLimiter}
 
   @impl true
-  def run(%{cwd: cwd}, _context) do
-    with {:ok, abs} <- PathGuard.validate(cwd),
+  def run(%{cwd: cwd}, ctx) do
+    with {:ok, abs} <- PathGuard.validate(cwd, ctx),
          {:ok, {cmd, args}} <-
-           CmdGuard.validate("git", ["status", "--porcelain=v1", "-b"]),
+           CmdGuard.validate("git", ["status", "--porcelain=v1", "-b"], ctx),
          {:ok, {output, status}} <-
            run_cmd(cmd, args, abs) do
       {:ok, %{stdout: output, exit_status: status, cwd: abs}}

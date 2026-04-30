@@ -48,9 +48,9 @@ defmodule JidoHpc.Actions.Bash.Run do
   alias JidoHpc.Safety.{CmdGuard, PathGuard, RateLimiter}
 
   @impl true
-  def run(params, _context) do
-    with {:ok, {cmd, args}} <- CmdGuard.validate(params.cmd, params.args),
-         {:ok, cwd} <- resolve_cwd(params.cd),
+  def run(params, ctx) do
+    with {:ok, {cmd, args}} <- CmdGuard.validate(params.cmd, params.args, ctx),
+         {:ok, cwd} <- resolve_cwd(params.cd, ctx),
          {:ok, {output, status}} <- execute(cmd, args, cwd) do
       {:ok,
        %{
@@ -63,8 +63,8 @@ defmodule JidoHpc.Actions.Bash.Run do
     end
   end
 
-  defp resolve_cwd(nil), do: {:ok, nil}
-  defp resolve_cwd(path), do: PathGuard.validate(path)
+  defp resolve_cwd(nil, _ctx), do: {:ok, nil}
+  defp resolve_cwd(path, ctx), do: PathGuard.validate(path, ctx)
 
   defp execute(cmd, args, cwd) do
     opts =

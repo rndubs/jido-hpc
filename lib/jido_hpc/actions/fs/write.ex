@@ -26,8 +26,8 @@ defmodule JidoHpc.Actions.FS.Write do
   alias JidoHpc.Safety.PathGuard
 
   @impl true
-  def run(%{path: path, content: content} = params, _context) do
-    with {:ok, abs} <- PathGuard.validate(path),
+  def run(%{path: path, content: content} = params, ctx) do
+    with {:ok, abs} <- PathGuard.validate(path, ctx),
          :ok <- ensure_parent(abs, params.mkdir_p?),
          :ok <- guard_overwrite(abs, params.overwrite),
          :ok <- File.write(abs, content) do
